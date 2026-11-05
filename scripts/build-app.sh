@@ -9,9 +9,10 @@ binary_dir=$(swift build -c release --show-bin-path)
 
 app=.build/Amnesia.app
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary_dir/Amnesia" "$app/Contents/MacOS/Amnesia"
 cp Resources/Info.plist "$app/Contents/Info.plist"
+cp Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 
 # SwiftPM records the deployment target as the SDK version, which makes macOS
 # run the app in compatibility mode with the old design. Record the real SDK so
