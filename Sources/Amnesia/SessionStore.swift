@@ -46,6 +46,10 @@ final class SessionStore {
         Task { await backend.reveal(session) }
     }
 
+    func detail(for session: Session) async -> SessionDetail {
+        await backend.detail(for: session)
+    }
+
     private func reload() async {
         (sessions, leftovers) = await backend.load()
     }

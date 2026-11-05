@@ -20,6 +20,12 @@ struct AgentPaths: Sendable {
         ["file-history", "session-env"].map { claudeHome.appendingPathComponent($0) }
     }
 
+    /// The folders kept alongside a session's transcript.
+    func claudeSidecars(ofTranscript transcript: URL, id: String) -> [URL] {
+        [transcript.deletingPathExtension()]
+            + claudeRecordDirectories.map { $0.appendingPathComponent(id) }
+    }
+
     // MARK: Codex
 
     var codexSessionRoots: [URL] {
@@ -40,6 +46,14 @@ struct AgentPaths: Sendable {
                 $0.pathExtension == "jsonl" && $0.lastPathComponent.hasPrefix("rollout-")
             }
         }
+    }
+
+    func codexShellSnapshots(forSession id: String) -> [URL] {
+        let files = try? FileManager.default.contentsOfDirectory(
+            at: codexShellSnapshots,
+            includingPropertiesForKeys: nil
+        )
+        return (files ?? []).filter { $0.lastPathComponent.hasPrefix("\(id).") }
     }
 
     func codexWriterLocks() -> [URL] {

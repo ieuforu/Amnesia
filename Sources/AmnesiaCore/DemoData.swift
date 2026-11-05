@@ -71,6 +71,51 @@ public enum DemoData {
         ]
     }
 
+    /// A made-up conversation and file list for a demo session.
+    public static func detail(for session: Session) -> SessionDetail {
+        let replies = [
+            "I'll start by reading the code involved, then make the smallest change that fixes this.",
+            "Done. I updated the affected files and the tests pass.",
+        ]
+        let messages = [session.firstMessage ?? "Hello", replies[0], "Looks good, go ahead.", replies[1]]
+            .enumerated()
+            .map { index, text in
+                TranscriptMessage(id: index, role: index.isMultiple(of: 2) ? .user : .agent, text: text)
+            }
+
+        let project = (session.projectPath as NSString?)?.lastPathComponent ?? "project"
+        let files: [StoredFile]
+        switch session.source {
+        case .claudeCode:
+            files = [
+                StoredFile(
+                    label: "Transcript",
+                    path: "~/.claude/projects/-Users-demo-Projects-\(project)/\(session.id).jsonl",
+                    size: session.size * 9 / 10
+                ),
+                StoredFile(
+                    label: "File history",
+                    path: "~/.claude/file-history/\(session.id)",
+                    size: session.size / 10
+                ),
+            ]
+        case .codex:
+            files = [
+                StoredFile(
+                    label: "Transcript",
+                    path: "~/.codex/sessions/2026/11/05/rollout-\(session.id).jsonl",
+                    size: session.size * 9 / 10
+                ),
+                StoredFile(
+                    label: "Shell snapshot",
+                    path: "~/.codex/shell_snapshots/\(session.id).sh",
+                    size: session.size / 10
+                ),
+            ]
+        }
+        return SessionDetail(messages: messages, files: files)
+    }
+
     public static func leftovers() -> [Leftover] {
         func leftover(
             _ index: Int,

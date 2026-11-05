@@ -18,6 +18,9 @@ public struct Session: Identifiable, Hashable, Sendable {
     /// The best label for the session, if it has one.
     public var title: String? { name ?? firstMessage }
 
+    /// The title as a sort key, since sessions without one still need a place.
+    public var sortTitle: String { title ?? "" }
+
     /// Sessions in use can't be selected or deleted.
     public var isDeletable: Bool { !isActive }
 

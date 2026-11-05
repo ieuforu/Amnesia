@@ -104,9 +104,7 @@ public struct SessionDeleter: Sendable {
         // If this fails nothing has changed yet, so the session stays intact.
         try moveToTrash(session.fileURL)
 
-        let sidecars =
-            [session.fileURL.deletingPathExtension()]
-            + paths.claudeRecordDirectories.map { $0.appendingPathComponent(session.id) }
+        let sidecars = paths.claudeSidecars(ofTranscript: session.fileURL, id: session.id)
         for sidecar in sidecars where FileManager.default.fileExists(atPath: sidecar.path) {
             try FileManager.default.removeItem(at: sidecar)
         }
@@ -130,11 +128,7 @@ public struct SessionDeleter: Sendable {
         try deleteCodexSession(session.id, paths)
 
         // `codex delete` leaves these behind, and the history holds typed text.
-        let files = try? FileManager.default.contentsOfDirectory(
-            at: paths.codexShellSnapshots,
-            includingPropertiesForKeys: nil
-        )
-        for file in files ?? [] where file.lastPathComponent.hasPrefix("\(session.id).") {
+        for file in paths.codexShellSnapshots(forSession: session.id) {
             try FileManager.default.removeItem(at: file)
         }
 

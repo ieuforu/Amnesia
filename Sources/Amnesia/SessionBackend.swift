@@ -8,6 +8,7 @@ protocol SessionBackend: Sendable {
     /// Returns how many leftovers couldn't be removed.
     func clean(_ leftovers: [Leftover]) async -> Int
     func reveal(_ session: Session) async
+    func detail(for session: Session) async -> SessionDetail
 }
 
 /// Reads and changes the agents' real data.
@@ -35,6 +36,12 @@ struct LiveBackend: SessionBackend {
     func reveal(_ session: Session) {
         NSWorkspace.shared.activateFileViewerSelecting([session.fileURL])
     }
+
+    func detail(for session: Session) async -> SessionDetail {
+        await Task.detached(priority: .userInitiated) {
+            SessionReader().detail(for: session)
+        }.value
+    }
 }
 
 /// Shows made-up data for screenshots. Actions only change this in-memory copy,
@@ -60,4 +67,8 @@ actor DemoBackend: SessionBackend {
     }
 
     func reveal(_ session: Session) {}
+
+    func detail(for session: Session) -> SessionDetail {
+        DemoData.detail(for: session)
+    }
 }

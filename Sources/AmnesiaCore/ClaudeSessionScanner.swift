@@ -30,7 +30,7 @@ struct ClaudeSessionScanner {
             source: .claudeCode,
             name: Self.customTitle(in: url),
             projectPath: records.lazy.compactMap { $0["cwd"] as? String }.first,
-            firstMessage: records.lazy.compactMap(Self.firstMessage).first,
+            firstMessage: MessageText.firstTyped(in: records, source: .claudeCode),
             updatedAt: file.updatedAt,
             size: file.size,
             fileURL: url,
@@ -44,24 +44,6 @@ struct ClaudeSessionScanner {
             .last { $0["type"] as? String == "custom-title" }
             .flatMap { $0["customTitle"] as? String }
             .flatMap { $0.isEmpty ? nil : $0 }
-    }
-
-    private static func firstMessage(in record: [String: Any]) -> String? {
-        guard
-            record["type"] as? String == "user",
-            record["isMeta"] as? Bool != true,
-            record["isSidechain"] as? Bool != true,
-            let message = record["message"] as? [String: Any]
-        else { return nil }
-
-        switch message["content"] {
-        case let text as String:
-            return MessageText.preview(text)
-        case let blocks as [[String: Any]]:
-            return MessageText.preview(MessageText.joinedText(from: blocks, blockType: "text"))
-        default:
-            return nil
-        }
     }
 
     private func contents(of directory: URL) -> [URL] {

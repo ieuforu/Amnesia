@@ -15,7 +15,8 @@ struct ContentView: View {
             failureMessage: store.failureMessage,
             onReveal: reveal,
             onDelete: { selected in Task { await store.delete(selected) } },
-            onCleanLeftovers: { selected in Task { await store.clean(selected) } }
+            onCleanLeftovers: { selected in Task { await store.clean(selected) } },
+            onOpenWindow: openWindow
         )
         .task { await store.refresh() }
         // The panel's view stays alive between openings, so `task` only covers
@@ -23,6 +24,11 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             Task { await store.refresh() }
         }
+    }
+
+    private func openWindow() {
+        dismiss()
+        MainWindowController.shared.show(store: store)
     }
 
     /// Clicking inside the panel doesn't dismiss it, so close it before Finder

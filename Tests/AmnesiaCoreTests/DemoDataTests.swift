@@ -39,3 +39,17 @@ import Testing
         #expect(outcomes.allSatisfy { $0 != .deleted })
     }
 }
+
+@Suite struct DemoDetailTests {
+    @Test func everySessionHasAPreviewAndNoRealPaths() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+
+        for session in DemoData.sessions() {
+            let detail = DemoData.detail(for: session)
+
+            #expect(!detail.messages.isEmpty)
+            #expect(!detail.files.isEmpty)
+            #expect(!detail.files.contains { $0.path.hasPrefix(home) })
+        }
+    }
+}

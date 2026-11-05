@@ -14,6 +14,7 @@ struct SessionPanel: View {
     let onReveal: (Session) -> Void
     let onDelete: ([Session]) -> Void
     let onCleanLeftovers: ([Leftover]) -> Void
+    let onOpenWindow: () -> Void
 
     @AppStorage("selectedSource") private var selectedSource = SessionSource.claudeCode
     @State private var selectedIDs: Set<String> = []
@@ -162,7 +163,7 @@ struct SessionPanel: View {
         if isConfirmingDelete, !selectedSessions.isEmpty {
             Confirmation(
                 title: "Delete \(sessionCount(selectedSessions)) (\(totalSize(of: selectedSessions)))?",
-                explanation: deleteExplanation,
+                explanation: deleteExplanation(for: selectedSource),
                 actionTitle: "Delete",
                 isBusy: isBusy,
                 onCancel: { isConfirmingDelete = false },
@@ -209,6 +210,7 @@ struct SessionPanel: View {
                         selectedIDs = []
                     }
                 }
+                MenuRow(title: "Open Amnesia App", action: onOpenWindow)
                 MenuRow(title: "Quit Amnesia") {
                     NSApplication.shared.terminate(nil)
                 }
@@ -217,20 +219,21 @@ struct SessionPanel: View {
         }
     }
 
-    private var deleteExplanation: String {
-        let common = """
-            Transcripts move to the Trash and stay on this Mac until you empty it. \
-            Prompt history and related records are removed for good.
-            """
-        switch selectedSource {
-        case .claudeCode: return common
-        case .codex: return common + " Codex sessions can't be resumed after this."
-        }
-    }
 }
 
-private func sessionCount(_ items: some Collection) -> String {
+func sessionCount(_ items: some Collection) -> String {
     items.count == 1 ? "1 Session" : "\(items.count) Sessions"
+}
+
+func deleteExplanation(for source: SessionSource) -> String {
+    let common = """
+        Transcripts move to the Trash and stay on this Mac until you empty it. \
+        Prompt history and related records are removed for good.
+        """
+    switch source {
+    case .claudeCode: return common
+    case .codex: return common + " Codex sessions can't be resumed after this."
+    }
 }
 
 /// Confirms inside the panel, because a separate alert would take focus and
@@ -369,7 +372,7 @@ private struct SessionGroupView: View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: toggleGroup) {
                 HStack(spacing: 8) {
-                    Text(title)
+                    Text(group.displayName)
                         .lineLimit(1)
                     Spacer(minLength: 0)
                     if selectedCount > 0 {
@@ -386,7 +389,7 @@ private struct SessionGroupView: View {
             .buttonStyle(.plain)
             .disabled(group.deletableIDs.isEmpty)
             .modifier(HoverHighlight())
-            .help("\(fullPath) — click to select or deselect all")
+            .help("\(group.displayPath) — click to select or deselect all")
 
             ForEach(group.sessions) { session in
                 SessionRow(
@@ -421,18 +424,6 @@ private struct SessionGroupView: View {
             selectedIDs.subtract(group.deletableIDs)
         } else {
             selectedIDs.formUnion(group.deletableIDs)
-        }
-    }
-
-    private var fullPath: String {
-        guard let path = group.projectPath else { return "Unknown Project" }
-        return (path as NSString).abbreviatingWithTildeInPath
-    }
-
-    private var title: String {
-        switch fullPath {
-        case "~": "Home"
-        default: (fullPath as NSString).lastPathComponent
         }
     }
 }

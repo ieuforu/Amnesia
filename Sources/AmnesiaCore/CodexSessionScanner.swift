@@ -27,7 +27,7 @@ struct CodexSessionScanner {
             source: .codex,
             name: names[id],
             projectPath: metadata?["cwd"] as? String,
-            firstMessage: records.lazy.compactMap(Self.firstMessage).first,
+            firstMessage: MessageText.firstTyped(in: records, source: .codex),
             updatedAt: file.updatedAt,
             size: file.size,
             fileURL: url,
@@ -56,17 +56,5 @@ struct CodexSessionScanner {
     private static func metadata(in record: [String: Any]) -> [String: Any]? {
         guard record["type"] as? String == "session_meta" else { return nil }
         return record["payload"] as? [String: Any]
-    }
-
-    private static func firstMessage(in record: [String: Any]) -> String? {
-        guard
-            record["type"] as? String == "response_item",
-            let payload = record["payload"] as? [String: Any],
-            payload["type"] as? String == "message",
-            payload["role"] as? String == "user",
-            let blocks = payload["content"] as? [[String: Any]]
-        else { return nil }
-
-        return MessageText.preview(MessageText.joinedText(from: blocks, blockType: "input_text"))
     }
 }
