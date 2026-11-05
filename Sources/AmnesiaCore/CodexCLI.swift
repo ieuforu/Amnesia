@@ -16,9 +16,9 @@ enum CodexCLIError: LocalizedError {
 enum CodexCLI {
     private static let timeout: DispatchTimeInterval = .seconds(30)
 
-    /// `homeDirectory` is passed through so the command acts on the same
-    /// folder that was scanned.
-    static func deleteSession(id: String, homeDirectory: URL) throws {
+    /// `paths` is passed through so the command acts on the same folder that
+    /// was scanned.
+    static func deleteSession(id: String, paths: AgentPaths) throws {
         guard let executable else {
             throw CodexCLIError.notInstalled
         }
@@ -26,10 +26,10 @@ enum CodexCLI {
         let process = Process()
         process.executableURL = executable
         process.arguments = ["delete", "--force", id]
-        process.currentDirectoryURL = homeDirectory
+        process.currentDirectoryURL = paths.home
         process.environment = [
-            "HOME": homeDirectory.path,
-            "CODEX_HOME": homeDirectory.appendingPathComponent(".codex").path,
+            "HOME": paths.home.path,
+            "CODEX_HOME": paths.codexHomeDirectory.path,
             "PATH": "/usr/bin:/bin",
         ]
         process.standardInput = FileHandle.nullDevice

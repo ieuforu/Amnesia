@@ -4,19 +4,19 @@ import Foundation
 enum HistoryFile {
     private static let maxAttempts = 3
 
-    /// Removes entries whose `key` equals `value`, leaving every other line
+    /// Removes entries whose `key` is one of `values`, leaving every other line
     /// exactly as it was, including lines that aren't valid JSON.
     ///
     /// Running agents append to these files without any shared lock, so the
     /// file is re-checked before replacing it and the rewrite is retried if it
     /// grew. That narrows the race but can't fully close it.
-    static func removeEntries(at url: URL, forKey key: String, value: String) throws {
+    static func removeEntries(at url: URL, forKey key: String, values: Set<String>) throws {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
 
         for _ in 0..<maxAttempts {
             let original = try Data(contentsOf: url)
             let lines = original.split(separator: 0x0A, omittingEmptySubsequences: false)
-            let kept = lines.filter { !matches($0, key: key, value: value) }
+            let kept = lines.filter { !matches($0, key: key, values: values) }
             guard kept.count != lines.count else { return }
 
             var rewritten = Data()
@@ -39,11 +39,12 @@ enum HistoryFile {
         throw CocoaError(.fileWriteUnknown)
     }
 
-    private static func matches(_ line: Data, key: String, value: String) -> Bool {
+    private static func matches(_ line: Data, key: String, values: Set<String>) -> Bool {
         guard
             let object = try? JSONSerialization.jsonObject(with: Data(line)),
-            let entry = object as? [String: Any]
+            let entry = object as? [String: Any],
+            let value = entry[key] as? String
         else { return false }
-        return entry[key] as? String == value
+        return values.contains(value)
     }
 }

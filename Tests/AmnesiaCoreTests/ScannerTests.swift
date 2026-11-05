@@ -27,7 +27,9 @@ private let codexID = "bbbbbbbb-0000-7000-8000-000000000002"
 
 @Suite struct ClaudeScannerTests {
     private func scan(_ home: FakeHome) -> [Session] {
-        ClaudeSessionScanner(claudeHome: home.url.appendingPathComponent(".claude")).scan()
+        let paths = AgentPaths(home: home.url)
+        let activity = SessionActivity(paths: paths, namesOfOpenFiles: { _ in [] }, recentWriteWindow: 0)
+        return ClaudeSessionScanner(paths: paths, activity: activity.snapshot()).scan()
     }
 
     @Test func readsProjectAndFirstTypedMessage() throws {
@@ -133,10 +135,9 @@ private let codexID = "bbbbbbbb-0000-7000-8000-000000000002"
 
 @Suite struct CodexScannerTests {
     private func scan(_ home: FakeHome, openFiles: Set<String> = []) -> [Session] {
-        CodexSessionScanner(
-            codexHome: home.url.appendingPathComponent(".codex"),
-            namesOfOpenFiles: { _ in openFiles }
-        ).scan()
+        let paths = AgentPaths(home: home.url)
+        let activity = SessionActivity(paths: paths, namesOfOpenFiles: { _ in openFiles }, recentWriteWindow: 0)
+        return CodexSessionScanner(paths: paths, activity: activity.snapshot()).scan()
     }
 
     private func rollout(id: String = codexID, cwd: String = "/work/api") -> [String] {
@@ -204,6 +205,31 @@ private let codexID = "bbbbbbbb-0000-7000-8000-000000000002"
 }
 
 @Suite struct SharedScanningTests {
+    @Test func openTranscriptCountsAsRunning() throws {
+        let home = FakeHome()
+        defer { home.remove() }
+        let name = "rollout-2026-11-04T08-00-00-\(codexID).jsonl"
+        try home.write(["{}"], to: ".codex/sessions/2026/11/04/\(name)")
+        let paths = AgentPaths(home: home.url)
+        let activity = SessionActivity(paths: paths, namesOfOpenFiles: { _ in [name] }, recentWriteWindow: 0)
+
+        #expect(activity.snapshot().runningIDs == [codexID])
+    }
+
+    @Test func recentWriteCountsAsInUseWithoutAnyRunningProcess() {
+        let snapshot = SessionActivity.Snapshot(runningIDs: [], recentWriteWindow: 120)
+
+        #expect(snapshot.isInUse(id: claudeID, lastWrite: Date(timeIntervalSinceNow: -60)))
+        #expect(!snapshot.isInUse(id: claudeID, lastWrite: Date(timeIntervalSinceNow: -300)))
+        #expect(!snapshot.isInUse(id: claudeID, lastWrite: nil))
+    }
+
+    @Test func runningSessionIsInUseHoweverOldItsLastWrite() {
+        let snapshot = SessionActivity.Snapshot(runningIDs: [claudeID], recentWriteWindow: 120)
+
+        #expect(snapshot.isInUse(id: claudeID, lastWrite: .distantPast))
+    }
+
     @Test func openFilesReportsOnlyFilesHeldOpen() throws {
         let home = FakeHome()
         defer { home.remove() }

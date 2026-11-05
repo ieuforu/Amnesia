@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 
 /// Finds Claude Code CLI sessions in `~/.claude`.
@@ -7,20 +6,16 @@ import Foundation
 /// directory comes from the transcript, because the encoded directory name
 /// can't be reversed: `/` and `-` both become `-`.
 struct ClaudeSessionScanner {
-    let claudeHome: URL
+    let paths: AgentPaths
+    let activity: SessionActivity.Snapshot
 
     func scan() -> [Session] {
-        let activeIDs = activeSessionIDs()
-        let projectsRoot = claudeHome.appendingPathComponent("projects")
-
-        return contents(of: projectsRoot).flatMap { projectDirectory in
-            contents(of: projectDirectory).compactMap { file in
-                session(at: file, activeIDs: activeIDs)
-            }
+        contents(of: paths.claudeProjects).flatMap { projectDirectory in
+            contents(of: projectDirectory).compactMap(session(at:))
         }
     }
 
-    private func session(at url: URL, activeIDs: Set<String>) -> Session? {
+    private func session(at url: URL) -> Session? {
         let id = url.deletingPathExtension().lastPathComponent
         guard
             url.pathExtension == "jsonl",
@@ -39,7 +34,7 @@ struct ClaudeSessionScanner {
             updatedAt: file.updatedAt,
             size: file.size,
             fileURL: url,
-            isActive: activeIDs.contains(id)
+            isActive: activity.isInUse(id: id, lastWrite: file.updatedAt)
         )
     }
 
@@ -67,31 +62,6 @@ struct ClaudeSessionScanner {
         default:
             return nil
         }
-    }
-
-    /// Running sessions register `sessions/<pid>.json`, which outlives a crash,
-    /// so the pid has to be checked too.
-    func activeSessionIDs() -> Set<String> {
-        let registrations = contents(of: claudeHome.appendingPathComponent("sessions"))
-            .filter { $0.pathExtension == "json" }
-
-        return Set(
-            registrations.compactMap { url -> String? in
-                guard
-                    let data = try? Data(contentsOf: url),
-                    let object = try? JSONSerialization.jsonObject(with: data),
-                    let registration = object as? [String: Any],
-                    let id = registration["sessionId"] as? String,
-                    let pid = registration["pid"] as? Int32,
-                    Self.isRunning(pid)
-                else { return nil }
-                return id
-            })
-    }
-
-    private static func isRunning(_ pid: Int32) -> Bool {
-        // EPERM means the process exists but belongs to another user.
-        kill(pid, 0) == 0 || errno == EPERM
     }
 
     private func contents(of directory: URL) -> [URL] {

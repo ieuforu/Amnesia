@@ -23,9 +23,17 @@ private final class Sandbox: @unchecked Sendable {
 
     deinit { try? FileManager.default.removeItem(at: home) }
 
+    var paths: AgentPaths { AgentPaths(home: home) }
+    var recentWriteWindow: TimeInterval = 0
+
     var deleter: SessionDeleter {
         SessionDeleter(
-            homeDirectory: home,
+            paths: paths,
+            activity: SessionActivity(
+                paths: paths,
+                namesOfOpenFiles: { [self] _ in openFiles },
+                recentWriteWindow: recentWriteWindow
+            ),
             moveToTrash: { [self] url in
                 if let trashError { throw trashError }
                 try FileManager.default.removeItem(at: url)
@@ -35,8 +43,7 @@ private final class Sandbox: @unchecked Sendable {
                 if let codexError { throw codexError }
                 lock.withLock { codexDeletes.append(id) }
                 try FileManager.default.removeItem(at: codexFile)
-            },
-            namesOfOpenFiles: { [self] _ in openFiles }
+            }
         )
     }
 
@@ -177,6 +184,15 @@ private final class Sandbox: @unchecked Sendable {
         #expect(box.trashed.isEmpty)
     }
 
+    @Test func skipsSessionWrittenMomentsAgo() throws {
+        let box = Sandbox()
+        let session = try box.makeClaudeSession()
+        box.recentWriteWindow = 120
+
+        #expect(box.deleter.delete([session]).map(\.outcome) == [.skippedInUse])
+        #expect(FileManager.default.fileExists(atPath: box.claudeFile.path))
+    }
+
     @Test func refusesFilesOutsideClaudeProjects() throws {
         let box = Sandbox()
         try box.write("precious", to: "Documents/\(claudeID).jsonl")
@@ -247,6 +263,15 @@ private final class Sandbox: @unchecked Sendable {
         #expect(box.codexDeletes.isEmpty)
     }
 
+    @Test func skipsSessionWithOpenTranscript() throws {
+        let box = Sandbox()
+        let session = try box.makeCodexSession()
+        box.openFiles = [session.fileURL.lastPathComponent]
+
+        #expect(box.deleter.delete([session]).map(\.outcome) == [.skippedInUse])
+        #expect(box.trashed.isEmpty)
+    }
+
     @Test func refusesFilesOutsideCodexSessions() throws {
         let box = Sandbox()
         try box.write("precious", to: ".codex/config-\(codexID).jsonl")
@@ -269,7 +294,7 @@ private final class Sandbox: @unchecked Sendable {
         let url = box.url("history.jsonl")
         let before = try FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate] as? Date
 
-        try HistoryFile.removeEntries(at: url, forKey: "sessionId", value: "missing")
+        try HistoryFile.removeEntries(at: url, forKey: "sessionId", values: ["missing"])
 
         let after = try FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate] as? Date
         #expect(before == after)
@@ -277,6 +302,6 @@ private final class Sandbox: @unchecked Sendable {
 
     @Test func ignoresMissingFile() throws {
         let box = Sandbox()
-        try HistoryFile.removeEntries(at: box.url("none.jsonl"), forKey: "k", value: "v")
+        try HistoryFile.removeEntries(at: box.url("none.jsonl"), forKey: "k", values: ["v"])
     }
 }

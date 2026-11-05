@@ -2,15 +2,22 @@ import Foundation
 
 /// Lists sessions from every supported agent. Scanning never modifies anything.
 public struct SessionScanner: Sendable {
-    private let homeDirectory: URL
+    private let paths: AgentPaths
+    private let activity: SessionActivity
 
     public init(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) {
-        self.homeDirectory = homeDirectory
+        let paths = AgentPaths(home: homeDirectory)
+        self.init(paths: paths, activity: SessionActivity(paths: paths))
+    }
+
+    init(paths: AgentPaths, activity: SessionActivity) {
+        self.paths = paths
+        self.activity = activity
     }
 
     public func scan() -> [Session] {
-        let claude = ClaudeSessionScanner(claudeHome: homeDirectory.appendingPathComponent(".claude"))
-        let codex = CodexSessionScanner(codexHome: homeDirectory.appendingPathComponent(".codex"))
-        return claude.scan() + codex.scan()
+        let snapshot = activity.snapshot()
+        return ClaudeSessionScanner(paths: paths, activity: snapshot).scan()
+            + CodexSessionScanner(paths: paths, activity: snapshot).scan()
     }
 }
