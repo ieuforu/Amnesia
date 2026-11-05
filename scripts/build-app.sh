@@ -1,11 +1,12 @@
 #!/bin/bash
-# Builds a release Amnesia.app bundle at .build/Amnesia.app.
+# Builds a universal release Amnesia.app bundle at .build/Amnesia.app.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-swift build -c release --product Amnesia
-binary_dir=$(swift build -c release --show-bin-path)
+build_flags=(-c release --arch arm64 --arch x86_64)
+swift build "${build_flags[@]}" --product Amnesia
+binary_dir=$(swift build "${build_flags[@]}" --show-bin-path)
 
 app=.build/Amnesia.app
 rm -rf "$app"

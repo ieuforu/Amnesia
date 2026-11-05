@@ -12,8 +12,6 @@
   <img src="docs/panel.png" width="419" alt="Amnesia's menu bar panel listing sessions by project">
 </p>
 
-> **Status: early development.** Deleting works, but there is no release yet, so build from source.
-
 ## Why
 
 Coding agents keep every conversation on disk: transcripts, prompt history, file snapshots and logs. Deleting one transcript by hand usually leaves the rest behind, including the text you typed. Amnesia aims to show what is stored and remove it properly.
@@ -49,9 +47,24 @@ Sessions removed by hand or by the agent's own cleanup often leave records behin
 
 Anything touched in the last hour, and any running session, is left alone, and everything is scanned again just before cleaning. Project memory is never touched.
 
+## Install
+
+1. Download the zip from the [latest release](https://github.com/ieuforu/Amnesia/releases/latest) and unzip it.
+2. Move `Amnesia.app` to your Applications folder.
+3. Open it. macOS blocks it the first time, because the app isn't notarized.
+4. Go to **System Settings → Privacy & Security** and click **Open Anyway**.
+
+Or skip steps 3 and 4 with this command:
+
+```bash
+xattr -d com.apple.quarantine /Applications/Amnesia.app
+```
+
+Amnesia then appears in your menu bar. It has no Dock icon. Requires macOS 14 or later, and the Codex CLI for deleting Codex sessions.
+
 ## Build from source
 
-Requires macOS 14 or later and Xcode 16 or later.
+Requires Xcode 16 or later.
 
 ```bash
 scripts/build-app.sh
