@@ -29,7 +29,6 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         window.title = "Amnesia"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
-        window.isMovableByWindowBackground = true
         window.setContentSize(NSSize(width: 1120, height: 720))
         window.contentMinSize = NSSize(width: 930, height: 520)
         window.isReleasedWhenClosed = false
