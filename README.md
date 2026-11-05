@@ -20,7 +20,7 @@ Coding agents keep every conversation on disk: transcripts, prompt history, file
 
 - Lists Claude Code CLI and Codex CLI sessions, grouped by project
 - Shows each session's name or first message, time and size
-- Deletes selected sessions, and protects any that are in use
+- Deletes one session in place, or many at once by project or age, and protects any that are in use
 - Finds and cleans up records of sessions that no longer exist
 - Reveals any session's file in Finder
 
