@@ -8,8 +8,11 @@ struct AmnesiaApp: App {
     )
 
     var body: some Scene {
-        MenuBarExtra("Amnesia", systemImage: "brain") {
+        MenuBarExtra {
             ContentView(store: store)
+        } label: {
+            Image(nsImage: MenuBarIcon.image)
+                .accessibilityLabel("Amnesia")
         }
         .menuBarExtraStyle(.window)
     }
