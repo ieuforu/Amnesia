@@ -2,7 +2,7 @@
 
 Give your AI amnesia. A macOS menu bar app to find and clear local Claude Code and Codex sessions.
 
-> **Status: early development.** The app launches, but scanning and deleting are not implemented yet.
+> **Status: early development.** Amnesia lists sessions, but deleting is not implemented yet.
 
 ## Why
 
