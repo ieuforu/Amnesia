@@ -10,6 +10,11 @@ public enum DeletionOutcome: Equatable, Sendable {
 public struct DeletionResult: Sendable {
     public let session: Session
     public let outcome: DeletionOutcome
+
+    public init(session: Session, outcome: DeletionOutcome) {
+        self.session = session
+        self.outcome = outcome
+    }
 }
 
 /// Deletes sessions and the records that belong to them.

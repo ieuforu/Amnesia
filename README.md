@@ -45,6 +45,14 @@ open .build/Amnesia.app
 
 Run the tests with `swift test`.
 
+To try it without touching real data, or to take screenshots, open it with made-up sessions:
+
+```bash
+open .build/Amnesia.app --args --demo
+```
+
+Nothing is read or deleted in demo mode.
+
 ## License
 
 [MIT](LICENSE)

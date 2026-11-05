@@ -30,6 +30,6 @@ struct ContentView: View {
     /// comes forward.
     private func reveal(_ session: Session) {
         dismiss()
-        NSWorkspace.shared.activateFileViewerSelecting([session.fileURL])
+        store.reveal(session)
     }
 }

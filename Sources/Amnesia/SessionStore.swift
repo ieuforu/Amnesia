@@ -9,12 +9,18 @@ final class SessionStore {
     private(set) var isBusy = false
     private(set) var failureMessage: String?
 
+    private let backend: any SessionBackend
+
+    init(backend: any SessionBackend) {
+        self.backend = backend
+    }
+
     func refresh() async {
         guard !isBusy else { return }
         isBusy = true
         defer { isBusy = false }
 
-        await rescan()
+        await reload()
     }
 
     func delete(_ selected: [Session]) async {
@@ -22,12 +28,8 @@ final class SessionStore {
         isBusy = true
         defer { isBusy = false }
 
-        let results = await Task.detached(priority: .userInitiated) {
-            SessionDeleter().delete(selected)
-        }.value
-
-        failureMessage = Self.failureMessage(for: results)
-        await rescan()
+        failureMessage = Self.failureMessage(for: await backend.delete(selected))
+        await reload()
     }
 
     func clean(_ selected: [Leftover]) async {
@@ -35,19 +37,17 @@ final class SessionStore {
         isBusy = true
         defer { isBusy = false }
 
-        let failures = await Task.detached(priority: .userInitiated) {
-            LeftoverCleaner().clean(selected)
-        }.value
-
+        let failures = await backend.clean(selected)
         failureMessage = failures > 0 ? "\(failures) leftovers not removed." : nil
-        await rescan()
+        await reload()
     }
 
-    private func rescan() async {
-        (sessions, leftovers) = await Task.detached(priority: .userInitiated) {
-            let sessions = SessionScanner().scan()
-            return (sessions, LeftoverScanner().scan(excluding: sessions))
-        }.value
+    func reveal(_ session: Session) {
+        Task { await backend.reveal(session) }
+    }
+
+    private func reload() async {
+        (sessions, leftovers) = await backend.load()
     }
 
     private static func failureMessage(for results: [DeletionResult]) -> String? {
