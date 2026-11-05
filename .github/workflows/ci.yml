@@ -12,7 +12,7 @@ jobs:
   test:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Show toolchain
         run: |
           sw_vers
@@ -22,8 +22,10 @@ jobs:
         run: swift test
       - name: Package the app
         run: scripts/package-release.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: Amnesia
           path: .build/Amnesia-*.zip
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 7
