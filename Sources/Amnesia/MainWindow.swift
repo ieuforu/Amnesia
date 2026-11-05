@@ -16,7 +16,17 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 
         NSApp.setActivationPolicy(.regular)
         NSApp.activate()
+        if !window.isVisible {
+            expand(window)
+        }
         window.makeKeyAndOrderFront(nil)
+    }
+
+    /// Fills the screen at once, because resizing a window every frame would
+    /// compete with the map's own opening animation.
+    private func expand(_ window: NSWindow) {
+        guard let visible = (NSScreen.main ?? window.screen)?.visibleFrame else { return }
+        window.setFrame(visible, display: false)
     }
 
     private func makeWindow(store: SessionStore) -> NSWindow {
@@ -29,12 +39,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         window.title = "Amnesia"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
-        window.setContentSize(NSSize(width: 1120, height: 720))
         window.contentMinSize = NSSize(width: 930, height: 520)
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.center()
-        window.setFrameAutosaveName("MainWindow")
         return window
     }
 

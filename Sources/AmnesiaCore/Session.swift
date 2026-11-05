@@ -21,6 +21,13 @@ public struct Session: Identifiable, Hashable, Sendable {
     /// The title as a sort key, since sessions without one still need a place.
     public var sortTitle: String { title ?? "" }
 
+    /// How forgotten the session is, from 0 (used just now) to 1 (three months
+    /// or more). The scale is logarithmic, so recent days count for the most.
+    public func fade(now: Date = Date()) -> Double {
+        let days = max(now.timeIntervalSince(updatedAt) / (24 * 60 * 60), 0)
+        return min(log(1 + days) / log(91), 1)
+    }
+
     /// Sessions in use can't be selected or deleted.
     public var isDeletable: Bool { !isActive }
 

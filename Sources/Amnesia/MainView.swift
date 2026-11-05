@@ -25,40 +25,21 @@ private enum Theme {
     static let header = Color(light: NSColor(white: 0.945, alpha: 1), dark: NSColor(white: 0.09, alpha: 1))
     static let sheet = Color(light: .white, dark: NSColor(white: 0.135, alpha: 1))
     static let card = Color.primary.opacity(0.04)
-    static let sheetRadius: CGFloat = 22
-    static let cardRadius: CGFloat = 16
+    /// Validated as a pair for color blindness. Each agent keeps its color.
+    static let claude = Color(red: 0.77, green: 0.33, blue: 0.16)
+    static let codex = Color(red: 0.32, green: 0.30, blue: 0.84)
+    static let tileRadius: CGFloat = 14
     static let panelRadius: CGFloat = 18
     /// Just under half the 30pt height: outlining fully rounded ends leaves
     /// small spikes where the two arcs meet.
     static let pillRadius: CGFloat = 13
+
+    static func color(for source: SessionSource) -> Color {
+        source == .claudeCode ? claude : codex
+    }
     static let number = Font.system(size: 22, weight: .regular, design: .monospaced)
+    static let hero = Font.system(size: 46, weight: .light, design: .monospaced)
     static let caption = Font.system(size: 12, design: .monospaced)
-}
-
-private enum SortOrder: String, CaseIterable, Identifiable {
-    case recent = "Recent"
-    case largest = "Largest"
-    case name = "Name"
-
-    var id: Self { self }
-
-    func sorted(_ sessions: [Session]) -> [Session] {
-        switch self {
-        case .recent: sessions.sorted { $0.updatedAt > $1.updatedAt }
-        case .largest: sessions.sorted { $0.size > $1.size }
-        case .name:
-            sessions.sorted { $0.sortTitle.localizedStandardCompare($1.sortTitle) == .orderedAscending }
-        }
-    }
-
-    func sorted(_ groups: [SessionGroup]) -> [SessionGroup] {
-        switch self {
-        case .recent: groups
-        case .largest: groups.sorted { $0.totalSize > $1.totalSize }
-        case .name:
-            groups.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
-        }
-    }
 }
 
 /// Where a delete has got to. Dragging and the Delete button both lead here.
@@ -76,51 +57,66 @@ private struct CardDrag: Equatable {
     var isOverZone: Bool
 }
 
-/// The window for looking through sessions before clearing them: a gray header
-/// holding a white sheet, with sessions as cards grouped by project.
+/// A project on the map. One folder can hold sessions from both agents.
+private struct Region: Identifiable, Equatable {
+    let source: SessionSource
+    let group: SessionGroup
+
+    var id: String { "\(source.rawValue)|\(group.id)" }
+}
+
+/// A map of what's stored. Area is size, and a tile dissolves into dots the
+/// longer it goes unused, so it shows both what takes the most space and what
+/// has already been forgotten. Clicking zooms in a level.
 struct MainView: View {
     let store: SessionStore
 
-    @State private var source = SessionSource.claudeCode
-    @State private var selection = ListSelection()
-    @State private var sortOrder = SortOrder.recent
-    @State private var collapsedGroups: Set<String> = []
+    @State private var focusedRegionID: String?
+    @State private var selectedID: String?
     @State private var deleteFlow = DeleteFlow.idle
     @State private var drag: CardDrag?
     @State private var detailFrame = CGRect.zero
-    @Namespace private var chips
+    @State private var hasAppeared = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let windowSpace = "window"
-    private static let morph = Animation.snappy(duration: 0.32)
+    private static let morph = Animation.snappy(duration: 0.42)
+    private static let panelWidth: CGFloat = 400
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-
-            HStack(alignment: .top, spacing: 14) {
-                sessionsPane
-                    .frame(minWidth: 320, maxWidth: .infinity)
-                detailPanel
+        VStack(alignment: .leading, spacing: 0) {
+            summary
+            HStack(spacing: 12) {
+                map
+                if showsPanel {
+                    detailPanel
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
-            .padding(14)
-            .background(
-                Theme.sheet,
-                in: UnevenRoundedRectangle(
-                    topLeadingRadius: Theme.sheetRadius,
-                    topTrailingRadius: Theme.sheetRadius
-                )
-            )
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
         }
         .ignoresSafeArea(.container, edges: .top)
-        .background(Theme.header)
-        .task { await store.refresh() }
-        .onChange(of: source) { selection.clear() }
-        .onChange(of: store.sessions) { selection.limit(to: Set(store.sessions.map(\.id))) }
+        .background(Theme.sheet)
+        .task {
+            await store.refresh()
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 1.1)) { hasAppeared = true }
+        }
+        .onChange(of: store.sessions) {
+            if let selectedID, !store.sessions.contains(where: { $0.id == selectedID }) {
+                self.selectedID = nil
+            }
+            if let focusedRegionID, !regions.contains(where: { $0.id == focusedRegionID }) {
+                self.focusedRegionID = nil
+            }
+        }
         .background {
             // This window has no File menu to provide the shortcut.
             Button("Close Window") { NSApp.keyWindow?.performClose(nil) }
                 .keyboardShortcut("w")
+                .opacity(0)
+            Button("Back", action: goBack)
+                .keyboardShortcut(.cancelAction)
                 .opacity(0)
         }
         .coordinateSpace(name: Self.windowSpace)
@@ -134,53 +130,275 @@ struct MainView: View {
         }
     }
 
-    private var header: some View {
-        HStack {
-            Text("Amnesia")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text("\(sessionCount(store.sessions).lowercased()) · \(totalSize(of: store.sessions))")
-                .font(Theme.caption)
-                .foregroundStyle(.secondary)
-                .contentTransition(.numericText())
-                .animation(.snappy(duration: 0.25), value: store.sessions.count)
-        }
-        // Clears the window's close, minimize and zoom buttons.
-        .padding(.leading, 84)
-        .padding(.trailing, 22)
-        .frame(height: 48)
-    }
-
     // MARK: Data
 
-    private var groups: [SessionGroup] {
-        let sessions = store.sessions.filter { $0.source == source }
-        return sortOrder.sorted(SessionGroup.grouping(sessions))
+    private var regions: [Region] {
+        SessionSource.allCases.flatMap { source in
+            SessionGroup.grouping(store.sessions.filter { $0.source == source })
+                .map { Region(source: source, group: $0) }
+        }
     }
 
-    /// Sessions in on-screen order, which clicks and arrow keys follow.
-    private var orderedSessions: [Session] {
-        groups
-            .filter { !collapsedGroups.contains($0.id) }
-            .flatMap { sortOrder.sorted($0.sessions) }
+    private var focusedRegion: Region? {
+        regions.first { $0.id == focusedRegionID }
     }
 
-    private var selectedSessions: [Session] {
-        store.sessions.filter { selection.ids.contains($0.id) }
+    private var selectedSession: Session? {
+        store.sessions.first { $0.id == selectedID }
     }
 
-    /// Sessions in use are never offered for deletion.
-    private var deletableSelection: [Session] {
-        selectedSessions.filter(\.isDeletable)
+    private var showsPanel: Bool {
+        selectedSession != nil || drag != nil || deleteFlow != .idle
     }
+
+    private var shreddingIDs: Set<String> {
+        if case .deleting(let sessions) = deleteFlow { Set(sessions.map(\.id)) } else { [] }
+    }
+
+    // MARK: Summary
+
+    private var scopeSessions: [Session] {
+        focusedRegion?.group.sessions ?? store.sessions
+    }
+
+    private var summary: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Button(action: goBack) {
+                    HStack(spacing: 5) {
+                        if focusedRegion != nil {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 10, weight: .semibold))
+                        }
+                        Text(focusedRegion?.group.displayName ?? "Stored on this Mac")
+                    }
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(focusedRegion == nil)
+
+                Text(totalSize(of: scopeSessions))
+                    .font(Theme.hero)
+                    .contentTransition(.numericText())
+                    .animation(.snappy(duration: 0.3), value: totalSize(of: scopeSessions))
+            }
+
+            Text(insight)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: 420, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 16)
+
+            legend
+        }
+        .padding(.leading, 18)
+        .padding(.trailing, 20)
+        .padding(.top, 40)
+        .padding(.bottom, 14)
+        // Hidden until the first scan finishes, so it never flashes "Zero kB".
+        .opacity(hasAppeared ? 1 : 0)
+    }
+
+    /// Says the conclusion in words, so the map is never the only way to read it.
+    private var insight: String {
+        let forgotten = scopeSessions.filter { $0.isDeletable && $0.isOlder(thanDays: 30) }
+        let forgottenText =
+            forgotten.isEmpty
+            ? "Nothing here has gone unused for a month."
+            : "\(sessionCount(forgotten).lowercased()) unused for a month, \(totalSize(of: forgotten))."
+
+        if let region = focusedRegion {
+            return "\(region.source.displayName). \(forgottenText)"
+        }
+        guard let largest = regions.max(by: { $0.group.totalSize < $1.group.totalSize }) else {
+            return "No sessions yet."
+        }
+        let size = largest.group.totalSize.formatted(.byteCount(style: .file))
+        return "Most of it is \(largest.group.displayName), at \(size). \(forgottenText)"
+    }
+
+    private var legend: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            HStack(spacing: 12) {
+                ForEach(SessionSource.allCases) { source in
+                    HStack(spacing: 5) {
+                        RoundedRectangle(cornerRadius: 2.5)
+                            .fill(Theme.color(for: source))
+                            .frame(width: 10, height: 10)
+                        Text(source.displayName)
+                    }
+                }
+            }
+            HStack(spacing: 6) {
+                Text("Recent")
+                DissolveKey()
+                    .frame(width: 58, height: 10)
+                Text("Forgotten")
+            }
+        }
+        .font(.system(size: 11.5))
+        .foregroundStyle(.secondary)
+    }
+
+    // MARK: Map
+
+    /// The dots are drawn once and then moved as one flattened layer. Zooming
+    /// only transforms that layer, so it never redraws thousands of dots.
+    private var map: some View {
+        GeometryReader { geometry in
+            let bounds = CGRect(origin: .zero, size: geometry.size)
+            let regionRects = Treemap.layout(
+                regions.map { .init(id: $0.id, value: Double($0.group.totalSize)) },
+                in: bounds
+            )
+            let focus = focusedRect(in: regionRects)
+            let scaleX = focus.map { bounds.width / max($0.width, 1) } ?? 1
+            let scaleY = focus.map { bounds.height / max($0.height, 1) } ?? 1
+
+            ZStack(alignment: .topLeading) {
+                ZStack(alignment: .topLeading) {
+                    ForEach(regions) { region in
+                        regionTile(region, rect: regionRects[region.id] ?? .zero)
+                    }
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+                .drawingGroup()
+                .scaleEffect(x: scaleX, y: scaleY, anchor: .topLeading)
+                .offset(x: -(focus?.minX ?? 0) * scaleX, y: -(focus?.minY ?? 0) * scaleY)
+                .opacity(focus == nil ? 1 : 0)
+
+                if let region = focusedRegion {
+                    let rects = Treemap.layout(
+                        region.group.sessions.map { .init(id: $0.id, value: Double($0.size)) },
+                        in: bounds
+                    )
+                    ZStack(alignment: .topLeading) {
+                        ForEach(region.group.sessions) { session in
+                            sessionTile(session, source: region.source, rect: rects[session.id] ?? .zero)
+                                .transition(.opacity)
+                        }
+                    }
+                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+                    .transition(.opacity)
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.tileRadius))
+            .mask(alignment: .leading) {
+                // Sweeps the map in from the left on opening.
+                LinearGradient(
+                    stops: [.init(color: .black, location: 0.85), .init(color: .clear, location: 1)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(width: hasAppeared ? geometry.size.width * 1.25 : 0)
+            }
+            .animation(Self.morph, value: store.sessions.map(\.id))
+        }
+    }
+
+    private func focusedRect(in rects: [String: CGRect]) -> CGRect? {
+        focusedRegionID.flatMap { rects[$0] }
+    }
+
+    private func regionTile(_ region: Region, rect: CGRect) -> some View {
+        MemoryTile(
+            title: region.group.displayName,
+            detail: region.group.totalSize.formatted(.byteCount(style: .file)),
+            color: Theme.color(for: region.source),
+            fade: region.group.fade(),
+            isInUse: region.group.sessions.contains { !$0.isDeletable },
+            isSelected: region.group.sessions.contains { $0.id == selectedID },
+            seed: region.id.hashValueStable
+        )
+        .frame(width: max(rect.width - 6, 0), height: max(rect.height - 6, 0))
+        .position(x: rect.midX, y: rect.midY)
+        .help("\(region.group.displayPath) · \(region.source.displayName)")
+        .onTapGesture {
+            guard deleteFlow == .idle else { return }
+            withAnimation(Self.morph) {
+                if region.group.sessions.count == 1 {
+                    // Nothing to zoom into, so go straight to the session.
+                    let id = region.group.sessions[0].id
+                    selectedID = selectedID == id ? nil : id
+                } else {
+                    focusedRegionID = region.id
+                }
+            }
+        }
+        .accessibilityElement()
+        .accessibilityLabel("\(region.group.displayName), \(region.group.sessions.count) sessions, \(region.group.totalSize.formatted(.byteCount(style: .file)))")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private func sessionTile(_ session: Session, source: SessionSource, rect: CGRect) -> some View {
+        let tile = MemoryTile(
+            title: session.title ?? "No Message",
+            detail: session.size.formatted(.byteCount(style: .file)),
+            color: Theme.color(for: source),
+            fade: session.fade(),
+            isInUse: !session.isDeletable,
+            isSelected: session.id == selectedID,
+            seed: session.id.hashValueStable
+        )
+        .frame(width: max(rect.width - 6, 0), height: max(rect.height - 6, 0))
+
+        return Group {
+            if shreddingIDs.contains(session.id) && !reduceMotion {
+                Shredded { tile }
+            } else {
+                tile
+            }
+        }
+        .position(x: rect.midX, y: rect.midY)
+        .opacity(drag?.sessions.contains(session) == true ? 0.35 : 1)
+        .help(session.title ?? "No Message")
+        .onTapGesture {
+            guard deleteFlow == .idle else { return }
+            withAnimation(Self.morph) { selectedID = session.id == selectedID ? nil : session.id }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 6, coordinateSpace: .named(Self.windowSpace))
+                .onChanged { dragChanged(session, to: $0.location) }
+                .onEnded { _ in dragEnded() }
+        )
+        .contextMenu {
+            Button("Show in Finder") { store.reveal(session) }
+        }
+        .accessibilityElement()
+        .accessibilityLabel("\(session.title ?? "No Message"), \(session.size.formatted(.byteCount(style: .file)))")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private func goBack() {
+        guard deleteFlow == .idle || isConfirming else { return }
+        withAnimation(Self.morph) {
+            if isConfirming {
+                deleteFlow = .idle
+            } else if selectedID != nil {
+                selectedID = nil
+            } else {
+                focusedRegionID = nil
+            }
+        }
+    }
+
+    private var isConfirming: Bool {
+        if case .confirming = deleteFlow { true } else { false }
+    }
+
+    // MARK: Deleting
 
     private func requestDelete() {
-        guard !deletableSelection.isEmpty, deleteFlow == .idle else { return }
-        withAnimation(Self.morph) { deleteFlow = .confirming(deletableSelection) }
+        guard let selectedSession, selectedSession.isDeletable, deleteFlow == .idle else { return }
+        withAnimation(Self.morph) { deleteFlow = .confirming([selectedSession]) }
     }
 
-    /// The card is shredded first and removed for real afterwards, so a session
+    /// The tile is shredded first and removed for real afterwards, so a session
     /// that fails to delete can simply reappear with its reason.
     private func delete(_ sessions: [Session]) {
         withAnimation(Self.morph) { deleteFlow = .deleting(sessions) }
@@ -189,33 +407,26 @@ struct MainView: View {
             if !reduceMotion {
                 try? await Task.sleep(for: .seconds(Shredded<EmptyView>.duration))
             }
-            selection.clear()
             await store.delete(sessions)
 
             if store.failureMessage == nil {
                 withAnimation(Self.morph) { deleteFlow = .finished(freed: totalSize(of: sessions)) }
                 try? await Task.sleep(for: .seconds(1.4))
             }
-            withAnimation(Self.morph) { deleteFlow = .idle }
+            withAnimation(Self.morph) {
+                selectedID = nil
+                deleteFlow = .idle
+            }
         }
     }
 
-    private var shreddingIDs: Set<String> {
-        if case .deleting(let sessions) = deleteFlow { Set(sessions.map(\.id)) } else { [] }
-    }
-
-    // MARK: Dragging
-
     private func dragChanged(_ session: Session, to location: CGPoint) {
-        guard deleteFlow == .idle else { return }
+        guard deleteFlow == .idle, session.isDeletable else { return }
 
-        let isOverZone = detailFrame.insetBy(dx: -10, dy: -10).contains(location)
+        let isOverZone = showsPanel && detailFrame.insetBy(dx: -10, dy: -10).contains(location)
         if drag == nil {
-            // Dragging a selected card carries the rest of the selection with it.
-            let sessions = selection.ids.contains(session.id) ? deletableSelection : [session]
-            guard session.isDeletable, !sessions.isEmpty else { return }
             withAnimation(Self.morph) {
-                drag = CardDrag(sessions: sessions, location: location, isOverZone: isOverZone)
+                drag = CardDrag(sessions: [session], location: location, isOverZone: isOverZone)
             }
         } else {
             drag?.location = location
@@ -235,129 +446,13 @@ struct MainView: View {
         }
     }
 
-    // MARK: Sessions
-
-    private var sessionsPane: some View {
-        let ids = orderedSessions.map(\.id)
-
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                ForEach(SessionSource.allCases) { option in
-                    Chip(title: option.displayName, isSelected: option == source, namespace: chips) {
-                        withAnimation(Self.morph) { source = option }
-                    }
-                }
-                SortChip(selection: $sortOrder)
-                Spacer()
-            }
-            .padding(.top, 2)
-            .padding(.horizontal, 4)
-
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    ForEach(groups) { group in
-                        groupSection(group, orderedIDs: ids)
-                    }
-                }
-                .padding(.horizontal, 4)
-                .padding(.bottom, 8)
-                .animation(Self.morph, value: sortOrder)
-                .animation(Self.morph, value: store.sessions.map(\.id))
-            }
-            .scrollIndicators(.never)
-
-            if let failure = store.failureMessage {
-                Text(failure)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-            }
-        }
-        .focusable()
-        .focusEffectDisabled()
-        .onKeyPress(.upArrow) {
-            selection.move(by: -1, in: ids)
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            selection.move(by: 1, in: ids)
-            return .handled
-        }
-        .onDeleteCommand(perform: requestDelete)
-    }
-
-    private func groupSection(_ group: SessionGroup, orderedIDs: [String]) -> some View {
-        let isCollapsed = collapsedGroups.contains(group.id)
-
-        return VStack(alignment: .leading, spacing: 10) {
-            Button {
-                withAnimation(.snappy(duration: 0.2)) {
-                    collapsedGroups.formSymmetricDifference([group.id])
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .medium))
-                        .rotationEffect(.degrees(isCollapsed ? -90 : 0))
-                    Text(group.displayName)
-                        .font(.system(size: 13))
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    Text(group.totalSize.formatted(.byteCount(style: .file)))
-                        .font(Theme.caption)
-                }
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(group.displayPath)
-
-            if !isCollapsed {
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 220), spacing: 10)],
-                    spacing: 10
-                ) {
-                    ForEach(sortOrder.sorted(group.sessions)) { session in
-                        SessionCard(
-                            session: session,
-                            isSelected: selection.ids.contains(session.id),
-                            isDragged: drag?.sessions.contains(session) == true,
-                            isShredding: shreddingIDs.contains(session.id) && !reduceMotion,
-                            windowSpace: Self.windowSpace,
-                            onClick: { click in
-                                selection.click(session.id, click, in: orderedIDs)
-                            },
-                            onDragChanged: { dragChanged(session, to: $0) },
-                            onDragEnded: dragEnded
-                        )
-                        .contextMenu {
-                            Button("Show in Finder") { store.reveal(session) }
-                            if session.isDeletable {
-                                Button("Delete…") {
-                                    if !selection.ids.contains(session.id) {
-                                        selection.click(session.id, .plain, in: orderedIDs)
-                                    }
-                                    requestDelete()
-                                }
-                            }
-                        }
-                    }
-                }
-                .transition(.opacity)
-            }
-        }
-    }
-
     // MARK: Detail
 
     /// One panel that changes shape: the session's details, then a place to drop
     /// it, then the confirmation, then the result.
     private var detailPanel: some View {
-        let showsZone = drag != nil || deleteFlow != .idle
-
-        return ZStack {
-            if showsZone {
+        ZStack {
+            if drag != nil || deleteFlow != .idle {
                 DeleteZone(
                     isDragging: drag != nil,
                     isOverZone: drag?.isOverZone == true,
@@ -366,12 +461,13 @@ struct MainView: View {
                     onConfirm: delete
                 )
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
-            } else {
-                detail
+            } else if let selectedSession {
+                SessionInspector(session: selectedSession, store: store, onDelete: requestDelete)
+                    .id(selectedSession.id)
                     .transition(.opacity)
             }
         }
-        .frame(width: 372)
+        .frame(width: Self.panelWidth)
         .frame(maxHeight: .infinity)
         .background(panelBackground, in: RoundedRectangle(cornerRadius: Theme.panelRadius))
         .overlay {
@@ -383,7 +479,6 @@ struct MainView: View {
                     )
             }
         }
-        .scaleEffect(drag?.isOverZone == true ? 1.01 : 1)
         .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(Self.windowSpace)) }) {
             detailFrame = $0
         }
@@ -397,37 +492,144 @@ struct MainView: View {
         }
         return isDanger ? Theme.delete.opacity(0.07) : Theme.card
     }
+}
 
-    @ViewBuilder
-    private var detail: some View {
-        switch selectedSessions.count {
-        case 0:
-            Text("Select a session")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case 1:
-            SessionInspector(session: selectedSessions[0], store: store, onDelete: requestDelete)
-                .id(selectedSessions[0].id)
-        default:
-            VStack(spacing: 4) {
-                Text(totalSize(of: selectedSessions))
-                    .font(Theme.number)
-                Text(sessionCount(selectedSessions).lowercased())
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                if deletableSelection.count < selectedSessions.count {
-                    Text("Sessions in use will be kept")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+extension String {
+    /// A hash that stays the same between launches, unlike `hashValue`, so a
+    /// tile keeps its pattern.
+    fileprivate var hashValueStable: Int {
+        utf8.reduce(5381) { ($0 &* 33 &+ Int($1)) & 0xFFFF_FFFF }
+    }
+}
+
+/// One tile of the map: a card sized by how much it stores, whose right edge
+/// breaks into dots as it's forgotten.
+private struct MemoryTile: View {
+    let title: String
+    let detail: String
+    let color: Color
+    let fade: Double
+    let isInUse: Bool
+    let isSelected: Bool
+    let seed: Int
+
+    @State private var isHovered = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            let shape = RoundedRectangle(cornerRadius: Theme.tileRadius)
+
+            ZStack(alignment: .topLeading) {
+                color.opacity(isSelected ? 0.14 : (isHovered ? 0.1 : 0.06))
+                FadingEdge(color: color, fade: fade, seed: seed)
+
+                if geometry.size.width > 84, geometry.size.height > 52 {
+                    label(in: geometry.size)
                 }
-                Button("Delete…", action: requestDelete)
-                    .buttonStyle(DeleteButtonStyle())
-                    .disabled(deletableSelection.isEmpty)
-                    .padding(.top, 12)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipShape(shape)
+            .overlay {
+                if isSelected {
+                    shape.strokeBorder(color.opacity(0.5))
+                }
+            }
         }
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+    }
+
+    private func label(in size: CGSize) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                if isInUse {
+                    Circle()
+                        .fill(.green)
+                        .frame(width: 7, height: 7)
+                }
+                Text(title)
+                    .font(.system(size: 13))
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 4)
+            Text(detail)
+                .font(.system(size: numberSize(in: size), weight: .light, design: .monospaced))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+        .padding(14)
+        .frame(maxWidth: size.width * (1 - FadingEdge.share(fade: fade)), maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// Bigger tiles get bigger numbers, within the type scale.
+    private func numberSize(in size: CGSize) -> CGFloat {
+        min(max(min(size.width / 7, size.height / 3.5), 17), 44)
+    }
+}
+
+/// The dissolving edge of a tile. It stays a sliver on recent sessions, so a
+/// screen of them is calm, and spreads across the card only with age.
+private struct FadingEdge: View {
+    let color: Color
+    let fade: Double
+    let seed: Int
+
+    private static let pitch: CGFloat = 8
+
+    /// How much of the tile's width the dots cover.
+    static func share(fade: Double) -> CGFloat {
+        CGFloat(0.05 + 0.5 * fade)
+    }
+
+    var body: some View {
+        Canvas(rendersAsynchronously: false) { context, size in
+            let width = size.width * Self.share(fade: fade)
+            let columns = Int(width / Self.pitch) + 1
+            let rows = Int(size.height / Self.pitch) + 1
+            var dots = Path()
+
+            for column in 0..<columns {
+                let along = Double(column) / Double(max(columns - 1, 1))
+                for row in 0..<rows where Self.noise(column, row, seed) > 0.25 + along * 0.65 {
+                    let diameter = Self.pitch * CGFloat(0.72 - 0.42 * along)
+                    dots.addEllipse(
+                        in: CGRect(
+                            x: size.width - CGFloat(column + 1) * Self.pitch,
+                            y: CGFloat(row) * Self.pitch,
+                            width: diameter,
+                            height: diameter
+                        )
+                    )
+                }
+            }
+            context.fill(dots, with: .color(color.opacity(0.55)))
+        }
+    }
+
+    private static func noise(_ column: Int, _ row: Int, _ seed: Int) -> Double {
+        let value = sin(Double(column) * 12.9898 + Double(row) * 78.233 + Double(seed % 997) * 0.37) * 43758.5453
+        return value - value.rounded(.down)
+    }
+}
+
+/// The small sample in the legend showing what fading looks like.
+private struct DissolveKey: View {
+    var body: some View {
+        Canvas { context, size in
+            let count = 9
+            let pitch = size.width / CGFloat(count)
+            for index in 0..<count {
+                let along = Double(index) / Double(count - 1)
+                let diameter = pitch * CGFloat(1.15 - 0.8 * along)
+                let rect = CGRect(
+                    x: CGFloat(index) * pitch,
+                    y: (size.height - diameter) / 2,
+                    width: diameter,
+                    height: diameter
+                )
+                context.fill(Path(ellipseIn: rect), with: .color(Color.secondary.opacity(1 - along * 0.6)))
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -545,169 +747,6 @@ private struct DragGhost: View {
         .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
         .rotationEffect(.degrees(isOverZone ? -2 : 0))
         .scaleEffect(isOverZone ? 0.92 : 1)
-    }
-}
-
-// MARK: - Controls
-
-/// The rounded outline shared by the chips above the list.
-private struct ChipLabel: View {
-    let title: String
-    var showsMenuArrow = false
-    var isSelected = false
-    /// When set, the selected look slides between chips instead of switching.
-    var namespace: Namespace.ID?
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(title)
-            if showsMenuArrow {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .medium))
-            }
-        }
-        .font(.system(size: 12.5))
-        .foregroundStyle(isSelected ? Theme.brand : .secondary)
-        .padding(.horizontal, 14)
-        .frame(height: 30)
-        .background { outline }
-        .contentShape(RoundedRectangle(cornerRadius: Theme.pillRadius))
-    }
-}
-
-extension ChipLabel {
-    @ViewBuilder
-    fileprivate var outline: some View {
-        let shape = RoundedRectangle(cornerRadius: Theme.pillRadius)
-        shape.strokeBorder(Color.primary.opacity(0.12))
-        if isSelected {
-            let selected = shape.fill(Theme.brand.opacity(0.08))
-                .overlay { shape.strokeBorder(Theme.brand.opacity(0.32)) }
-                .background(Theme.sheet, in: shape)
-            if let namespace {
-                selected.matchedGeometryEffect(id: "selected chip", in: namespace)
-            } else {
-                selected
-            }
-        }
-    }
-}
-
-private struct Chip: View {
-    let title: String
-    let isSelected: Bool
-    let namespace: Namespace.ID
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            ChipLabel(title: title, isSelected: isSelected, namespace: namespace)
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-}
-
-private struct SortChip: View {
-    @Binding var selection: SortOrder
-
-    var body: some View {
-        Menu {
-            Picker("Sort By", selection: $selection) {
-                ForEach(SortOrder.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.inline)
-            .labelsHidden()
-        } label: {
-            ChipLabel(title: selection.rawValue, showsMenuArrow: true)
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-    }
-}
-
-private struct SessionCard: View {
-    let session: Session
-    let isSelected: Bool
-    let isDragged: Bool
-    let isShredding: Bool
-    let windowSpace: String
-    let onClick: (ListSelection.Click) -> Void
-    let onDragChanged: (CGPoint) -> Void
-    let onDragEnded: () -> Void
-
-    @State private var isHovered = false
-
-    var body: some View {
-        Group {
-            if isShredding {
-                Shredded { card }
-            } else {
-                card
-            }
-        }
-        .opacity(isDragged ? 0.35 : 1)
-        .scaleEffect(isDragged ? 0.97 : 1)
-        .animation(.snappy(duration: 0.2), value: isDragged)
-        .onHover { isHovered = $0 }
-        .onTapGesture { onClick(Self.currentClick) }
-        .gesture(
-            DragGesture(minimumDistance: 6, coordinateSpace: .named(windowSpace))
-                .onChanged { onDragChanged($0.location) }
-                .onEnded { _ in onDragEnded() }
-        )
-    }
-
-    private var card: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(session.title ?? "No Message")
-                    .font(.system(size: 13))
-                    .foregroundStyle(session.title == nil ? .secondary : .primary)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                if !session.isDeletable {
-                    Circle()
-                        .fill(.green)
-                        .frame(width: 7, height: 7)
-                        .help("In use")
-                        .accessibilityLabel("In use")
-                }
-            }
-
-            HStack(alignment: .firstTextBaseline) {
-                Text(session.size.formatted(.byteCount(style: .file)))
-                    .font(Theme.number)
-                Spacer(minLength: 8)
-                Text(session.updatedAt, format: .relative(presentation: .named))
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(14)
-        .background(
-            isSelected
-                ? Theme.brand.opacity(0.08)
-                : Color.primary.opacity(isHovered ? 0.07 : 0.04),
-            in: RoundedRectangle(cornerRadius: Theme.cardRadius)
-        )
-        .overlay {
-            if isSelected {
-                RoundedRectangle(cornerRadius: Theme.cardRadius)
-                    .strokeBorder(Theme.brand.opacity(0.32))
-            }
-        }
-        .contentShape(RoundedRectangle(cornerRadius: Theme.cardRadius))
-    }
-
-    private static var currentClick: ListSelection.Click {
-        let flags = NSEvent.modifierFlags
-        if flags.contains(.command) { return .toggle }
-        if flags.contains(.shift) { return .extend }
-        return .plain
     }
 }
 

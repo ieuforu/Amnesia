@@ -7,6 +7,11 @@ public struct SessionGroup: Identifiable, Hashable, Sendable {
 
     public var id: String { projectPath ?? "" }
     public var totalSize: Int64 { sessions.reduce(0) { $0 + $1.size } }
+    /// A project is as remembered as its most recent session.
+    public func fade(now: Date = Date()) -> Double {
+        sessions.map { $0.fade(now: now) }.min() ?? 1
+    }
+
     /// The project's location, shortened for display.
     public var displayPath: String {
         guard let projectPath else { return "Unknown Project" }
