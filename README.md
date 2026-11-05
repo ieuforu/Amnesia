@@ -13,7 +13,7 @@ Coding agents keep every conversation on disk: transcripts, prompt history, file
 - List Claude Code CLI and Codex CLI sessions, grouped by project
 - Show each session's time, size and first message
 - Delete selected sessions, and skip any that are still running
-- Find leftovers whose session is already gone
+- Find and clean up records of sessions that no longer exist
 
 Desktop apps are out of scope for v1.
 
@@ -27,6 +27,12 @@ Desktop apps are out of scope for v1.
 | Project memory | Never touched | Not applicable |
 
 Transcripts stay on your Mac until you empty the Trash. Sessions that are running can't be selected, and each one is checked again just before it's deleted.
+
+## Leftovers
+
+Sessions removed by hand or by the agent's own cleanup often leave records behind, including the prompts you typed. Amnesia lists these under **Leftovers** and can remove them for good.
+
+Anything touched in the last hour, and any running session, is left alone, and everything is scanned again just before cleaning. Project memory is never touched.
 
 ## Build from source
 

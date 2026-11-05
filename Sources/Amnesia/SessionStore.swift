@@ -5,6 +5,7 @@ import Observation
 @Observable
 final class SessionStore {
     private(set) var sessions: [Session] = []
+    private(set) var leftovers: [Leftover] = []
     private(set) var isBusy = false
     private(set) var failureMessage: String?
 
@@ -29,9 +30,23 @@ final class SessionStore {
         await rescan()
     }
 
+    func clean(_ selected: [Leftover]) async {
+        guard !isBusy else { return }
+        isBusy = true
+        defer { isBusy = false }
+
+        let failures = await Task.detached(priority: .userInitiated) {
+            LeftoverCleaner().clean(selected)
+        }.value
+
+        failureMessage = failures > 0 ? "\(failures) leftovers not removed." : nil
+        await rescan()
+    }
+
     private func rescan() async {
-        sessions = await Task.detached(priority: .userInitiated) {
-            SessionScanner().scan()
+        (sessions, leftovers) = await Task.detached(priority: .userInitiated) {
+            let sessions = SessionScanner().scan()
+            return (sessions, LeftoverScanner().scan(excluding: sessions))
         }.value
     }
 

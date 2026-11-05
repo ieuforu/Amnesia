@@ -8,15 +8,18 @@ import SwiftUI
 /// as real sessions.
 struct SessionPanel: View {
     let sessions: [Session]
+    let leftovers: [Leftover]
     let isBusy: Bool
     let failureMessage: String?
     let onRefresh: () -> Void
     let onReveal: (Session) -> Void
     let onDelete: ([Session]) -> Void
+    let onCleanLeftovers: ([Leftover]) -> Void
 
     @AppStorage("selectedSource") private var selectedSource = SessionSource.claudeCode
     @State private var selectedIDs: Set<String> = []
     @State private var isConfirmingDelete = false
+    @State private var isConfirmingCleanup = false
     @State private var listHeight: CGFloat = 0
 
     private static let maxListHeight: CGFloat = 440
@@ -63,6 +66,7 @@ struct SessionPanel: View {
             // Selection stays within one agent, so a delete can't span both.
             selectedIDs = []
             isConfirmingDelete = false
+            isConfirmingCleanup = false
         }
     }
 
@@ -81,13 +85,17 @@ struct SessionPanel: View {
         sessions(from: selectedSource).filter { selectedIDs.contains($0.id) && !$0.isActive }
     }
 
+    private var visibleLeftovers: [Leftover] {
+        leftovers.filter { $0.source == selectedSource }
+    }
+
     private var groups: [SessionGroup] {
         SessionGroup.grouping(sessions(from: selectedSource))
     }
 
     @ViewBuilder
     private var content: some View {
-        if groups.isEmpty {
+        if groups.isEmpty, visibleLeftovers.isEmpty {
             Text(isBusy ? "Scanning…" : "No Sessions")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
@@ -102,6 +110,9 @@ struct SessionPanel: View {
                             selectedIDs: $selectedIDs,
                             onReveal: onReveal
                         )
+                    }
+                    if !visibleLeftovers.isEmpty {
+                        LeftoversView(leftovers: visibleLeftovers)
                     }
                 }
                 .onGeometryChange(for: CGFloat.self, of: \.size.height) { listHeight = $0 }
@@ -125,15 +136,32 @@ struct SessionPanel: View {
         }
 
         if isConfirmingDelete, !selectedSessions.isEmpty {
-            DeleteConfirmation(
-                sessions: selectedSessions,
-                source: selectedSource,
+            Confirmation(
+                title: "Delete \(sessionCount(selectedSessions))?",
+                explanation: deleteExplanation,
+                actionTitle: "Delete",
                 isBusy: isBusy,
                 onCancel: { isConfirmingDelete = false },
-                onDelete: {
+                onConfirm: {
                     onDelete(selectedSessions)
                     selectedIDs = []
                     isConfirmingDelete = false
+                }
+            )
+        } else if isConfirmingCleanup, !visibleLeftovers.isEmpty {
+            Confirmation(
+                title: "Clean Up Leftovers?",
+                explanation: """
+                    Prompts and files from \(sessionCount(visibleLeftovers).lowercased()) that no longer \
+                    exist are removed for good. They can't be recovered and won't appear in \
+                    your prompt history.
+                    """,
+                actionTitle: "Clean Up",
+                isBusy: isBusy,
+                onCancel: { isConfirmingCleanup = false },
+                onConfirm: {
+                    onCleanLeftovers(visibleLeftovers)
+                    isConfirmingCleanup = false
                 }
             )
         } else {
@@ -142,6 +170,11 @@ struct SessionPanel: View {
                     MenuRow(title: "Refresh", action: onRefresh)
                         .keyboardShortcut("r")
                         .disabled(isBusy)
+                    if !visibleLeftovers.isEmpty {
+                        MenuRow(title: "Clean Up Leftovers…") {
+                            isConfirmingCleanup = true
+                        }
+                    }
                 } else {
                     MenuRow(title: "Delete \(sessionCount(selectedSessions))…") {
                         isConfirmingDelete = true
@@ -154,24 +187,36 @@ struct SessionPanel: View {
             }
         }
     }
+
+    private var deleteExplanation: String {
+        let common = """
+            Transcripts move to the Trash and stay on this Mac until you empty it. \
+            Prompt history and related records are removed for good.
+            """
+        switch selectedSource {
+        case .claudeCode: return common
+        case .codex: return common + " Codex sessions can't be resumed after this."
+        }
+    }
 }
 
-private func sessionCount(_ sessions: [Session]) -> String {
-    sessions.count == 1 ? "1 Session" : "\(sessions.count) Sessions"
+private func sessionCount(_ items: some Collection) -> String {
+    items.count == 1 ? "1 Session" : "\(items.count) Sessions"
 }
 
 /// Confirms inside the panel, because a separate alert would take focus and
 /// close the menu bar panel.
-private struct DeleteConfirmation: View {
-    let sessions: [Session]
-    let source: SessionSource
+private struct Confirmation: View {
+    let title: String
+    let explanation: String
+    let actionTitle: String
     let isBusy: Bool
     let onCancel: () -> Void
-    let onDelete: () -> Void
+    let onConfirm: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Delete \(sessionCount(sessions))?")
+            Text(title)
                 .font(.system(size: 13, weight: .bold))
 
             Text(explanation)
@@ -183,7 +228,7 @@ private struct DeleteConfirmation: View {
                 Spacer()
                 Button("Cancel", action: onCancel)
                     .keyboardShortcut(.cancelAction)
-                Button("Delete", role: .destructive, action: onDelete)
+                Button(actionTitle, role: .destructive, action: onConfirm)
                     .buttonStyle(.borderedProminent)
                     .tint(.red)
             }
@@ -193,16 +238,52 @@ private struct DeleteConfirmation: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 4)
     }
+}
 
-    private var explanation: String {
-        let common = """
-            Transcripts move to the Trash and stay on this Mac until you empty it. \
-            Prompt history and related records are removed for good.
-            """
-        switch source {
-        case .claudeCode: return common
-        case .codex: return common + " Codex sessions can't be resumed after this."
+/// Summarizes leftovers as one row, because they're cleaned up together.
+private struct LeftoversView: View {
+    let leftovers: [Leftover]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Leftovers")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 3)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(leftovers.count == 1 ? "1 deleted session" : "\(leftovers.count) deleted sessions")
+                    .font(.system(size: 13))
+
+                Text(details)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .padding(.leading, 32)
+            .padding(.trailing, 14)
+            .padding(.vertical, 4)
+            .help("Their transcripts are gone, but these records remain.")
         }
+    }
+
+    private var details: String {
+        let prompts = leftovers.reduce(0) { $0 + $1.promptCount }
+        let size = leftovers.reduce(0) { $0 + $1.size }
+
+        var parts: [String] = []
+        if prompts > 0 {
+            parts.append(prompts == 1 ? "1 prompt" : "\(prompts) prompts")
+        }
+        if size > 0 {
+            parts.append(size.formatted(.byteCount(style: .file)))
+        }
+        // Database records have no size of their own to report.
+        if leftovers.contains(where: \.hasDatabaseRecord) {
+            parts.append("database records")
+        }
+        return parts.joined(separator: " · ")
     }
 }
 

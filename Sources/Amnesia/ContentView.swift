@@ -10,11 +10,13 @@ struct ContentView: View {
     var body: some View {
         SessionPanel(
             sessions: store.sessions,
+            leftovers: store.leftovers,
             isBusy: store.isBusy,
             failureMessage: store.failureMessage,
             onRefresh: { Task { await store.refresh() } },
             onReveal: reveal,
-            onDelete: { selected in Task { await store.delete(selected) } }
+            onDelete: { selected in Task { await store.delete(selected) } },
+            onCleanLeftovers: { selected in Task { await store.clean(selected) } }
         )
         .task { await store.refresh() }
         // The panel's view stays alive between openings, so `task` only covers
