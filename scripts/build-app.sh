@@ -13,6 +13,13 @@ mkdir -p "$app/Contents/MacOS"
 cp "$binary_dir/Amnesia" "$app/Contents/MacOS/Amnesia"
 cp Resources/Info.plist "$app/Contents/Info.plist"
 
+# SwiftPM records the deployment target as the SDK version, which makes macOS
+# run the app in compatibility mode with the old design. Record the real SDK so
+# it gets the current system appearance.
+minimum_system=$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' Resources/Info.plist)
+vtool -set-build-version macos "$minimum_system" "$(xcrun --show-sdk-version)" -replace \
+    -output "$app/Contents/MacOS/Amnesia" "$app/Contents/MacOS/Amnesia" 2>/dev/null
+
 # Ad-hoc signature: enough to run locally, not notarized for distribution.
 codesign --force --sign - "$app"
 
