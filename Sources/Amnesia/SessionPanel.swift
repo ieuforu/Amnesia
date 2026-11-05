@@ -303,9 +303,9 @@ private struct SessionRow: View {
             Button(action: onReveal) {
                 HStack(spacing: 9) {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(session.firstMessage ?? "No Message")
+                        Text(session.title ?? "No Message")
                             .font(.system(size: 13))
-                            .foregroundStyle(session.firstMessage == nil ? .secondary : .primary)
+                            .foregroundStyle(session.title == nil ? .secondary : .primary)
                             .lineLimit(1)
 
                         HStack(spacing: 4) {

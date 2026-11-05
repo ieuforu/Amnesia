@@ -28,11 +28,12 @@ struct ClaudeSessionScanner {
             let file = SessionFile(url: url)
         else { return nil }
 
-        let records = JSONLHead.records(in: url)
+        let records = JSONLSample.head(of: url)
 
         return Session(
             id: id,
             source: .claudeCode,
+            name: Self.customTitle(in: url),
             projectPath: records.lazy.compactMap { $0["cwd"] as? String }.first,
             firstMessage: records.lazy.compactMap(Self.firstMessage).first,
             updatedAt: file.updatedAt,
@@ -40,6 +41,14 @@ struct ClaudeSessionScanner {
             fileURL: url,
             isActive: activeIDs.contains(id)
         )
+    }
+
+    /// Renames are appended to the transcript, so the latest one is near the end.
+    private static func customTitle(in url: URL) -> String? {
+        JSONLSample.tail(of: url)
+            .last { $0["type"] as? String == "custom-title" }
+            .flatMap { $0["customTitle"] as? String }
+            .flatMap { $0.isEmpty ? nil : $0 }
     }
 
     private static func firstMessage(in record: [String: Any]) -> String? {

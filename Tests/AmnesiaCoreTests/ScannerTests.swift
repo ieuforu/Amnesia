@@ -65,6 +65,41 @@ private let codexID = "bbbbbbbb-0000-7000-8000-000000000002"
         #expect(scan(home).first?.firstMessage == "what is this")
     }
 
+    @Test func usesLatestRenameEvenInLongTranscripts() throws {
+        let home = FakeHome()
+        defer { home.remove() }
+        let padding = String(repeating: "x", count: 300 * 1024)
+        try home.write(
+            [
+                #"{"type":"user","cwd":"/work/app","message":{"content":"hello"}}"#,
+                #"{"type":"custom-title","customTitle":"first name"}"#,
+                #"{"type":"assistant","text":"\#(padding)"}"#,
+                #"{"type":"custom-title","customTitle":"second name"}"#,
+                #"{"type":"custom-title","customTitle":"final name"}"#,
+                #"{"type":"assistant","text":"done"}"#,
+            ],
+            to: ".claude/projects/-work-app/\(claudeID).jsonl"
+        )
+
+        let session = try #require(scan(home).first)
+        #expect(session.name == "final name")
+        #expect(session.firstMessage == "hello")
+    }
+
+    @Test func hasNoNameUntilRenamed() throws {
+        let home = FakeHome()
+        defer { home.remove() }
+        try home.write(
+            [
+                #"{"type":"user","message":{"content":"hello"}}"#,
+                #"{"type":"ai-title","aiTitle":"generated"}"#,
+            ],
+            to: ".claude/projects/-work-app/\(claudeID).jsonl"
+        )
+
+        #expect(scan(home).first?.name == nil)
+    }
+
     @Test func ignoresMemoryAndNonSessionFiles() throws {
         let home = FakeHome()
         defer { home.remove() }
@@ -125,6 +160,22 @@ private let codexID = "bbbbbbbb-0000-7000-8000-000000000002"
         #expect(session.firstMessage == "add caching")
     }
 
+    @Test func usesLatestNameFromIndex() throws {
+        let home = FakeHome()
+        defer { home.remove() }
+        try home.write(rollout(), to: ".codex/sessions/2026/11/04/rollout-2026-11-04T08-00-00-\(codexID).jsonl")
+        try home.write(
+            [
+                #"{"id":"\#(codexID)","thread_name":"generated"}"#,
+                #"{"id":"other","thread_name":"unrelated"}"#,
+                #"{"id":"\#(codexID)","thread_name":"renamed"}"#,
+            ],
+            to: ".codex/session_index.jsonl"
+        )
+
+        #expect(scan(home).first?.name == "renamed")
+    }
+
     @Test func includesArchivedSessions() throws {
         let home = FakeHome()
         defer { home.remove() }
@@ -172,8 +223,30 @@ private let codexID = "bbbbbbbb-0000-7000-8000-000000000002"
         defer { home.remove() }
         try home.write([#"{"n":1}"#, #"{"n":2}"#], to: "head.jsonl")
 
-        let records = JSONLHead.records(in: home.url.appendingPathComponent("head.jsonl"), byteLimit: 10)
+        let records = JSONLSample.head(of: home.url.appendingPathComponent("head.jsonl"), byteLimit: 10)
         #expect(records.count == 1)
+    }
+
+    @Test func tailDropsLineCutOffByByteLimit() throws {
+        let home = FakeHome()
+        defer { home.remove() }
+        try home.write([#"{"n":1}"#, #"{"n":2}"#], to: "tail.jsonl")
+
+        let records = JSONLSample.tail(of: home.url.appendingPathComponent("tail.jsonl"), byteLimit: 10)
+        #expect(records.map { $0["n"] as? Int } == [2])
+    }
+
+    @Test func titlePrefersNameOverFirstMessage() {
+        func session(name: String?, message: String?) -> Session {
+            Session(
+                id: "id", source: .codex, name: name, projectPath: nil, firstMessage: message,
+                updatedAt: Date(), size: 0, fileURL: URL(fileURLWithPath: "/id"), isActive: false
+            )
+        }
+
+        #expect(session(name: "named", message: "typed").title == "named")
+        #expect(session(name: nil, message: "typed").title == "typed")
+        #expect(session(name: nil, message: nil).title == nil)
     }
 
     @Test func missingDirectoriesYieldNoSessions() {

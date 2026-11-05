@@ -17,6 +17,11 @@ struct ContentView: View {
             onDelete: { selected in Task { await store.delete(selected) } }
         )
         .task { await store.refresh() }
+        // The panel's view stays alive between openings, so `task` only covers
+        // the first one. Opening the panel makes its window key.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            Task { await store.refresh() }
+        }
     }
 
     /// Clicking inside the panel doesn't dismiss it, so close it before Finder

@@ -10,10 +10,11 @@ struct CodexSessionScanner {
 
     func scan() -> [Session] {
         let openLocks = openLocks()
+        let names = sessionNames()
 
         return ["sessions", "archived_sessions"]
             .flatMap { rollouts(in: codexHome.appendingPathComponent($0)) }
-            .compactMap { session(at: $0, openLocks: openLocks) }
+            .compactMap { session(at: $0, openLocks: openLocks, names: names) }
     }
 
     /// The lock files of sessions a running Codex process owns.
@@ -21,16 +22,17 @@ struct CodexSessionScanner {
         namesOfOpenFiles(writerLocks())
     }
 
-    private func session(at url: URL, openLocks: Set<String>) -> Session? {
+    private func session(at url: URL, openLocks: Set<String>, names: [String: String]) -> Session? {
         guard let file = SessionFile(url: url) else { return nil }
 
-        let records = JSONLHead.records(in: url)
+        let records = JSONLSample.head(of: url)
         let metadata = records.lazy.compactMap(Self.metadata).first
         guard let id = metadata?["id"] as? String ?? Self.id(fromFileName: url) else { return nil }
 
         return Session(
             id: id,
             source: .codex,
+            name: names[id],
             projectPath: metadata?["cwd"] as? String,
             firstMessage: records.lazy.compactMap(Self.firstMessage).first,
             updatedAt: file.updatedAt,
@@ -38,6 +40,25 @@ struct CodexSessionScanner {
             fileURL: url,
             isActive: openLocks.contains("\(id).lock")
         )
+    }
+
+    /// `session_index.jsonl` gains a line per rename, so later lines win.
+    private func sessionNames() -> [String: String] {
+        let index = codexHome.appendingPathComponent("session_index.jsonl")
+        guard let data = try? Data(contentsOf: index) else { return [:] }
+
+        var names: [String: String] = [:]
+        for line in data.split(separator: 0x0A) {
+            guard
+                let object = try? JSONSerialization.jsonObject(with: Data(line)),
+                let entry = object as? [String: Any],
+                let id = entry["id"] as? String,
+                let name = entry["thread_name"] as? String,
+                !name.isEmpty
+            else { continue }
+            names[id] = name
+        }
+        return names
     }
 
     private static func metadata(in record: [String: Any]) -> [String: Any]? {
