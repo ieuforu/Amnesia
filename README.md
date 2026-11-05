@@ -51,8 +51,8 @@ Anything touched in the last hour, and any running session, is left alone, and e
 
 1. Download the zip from the [latest release](https://github.com/ieuforu/Amnesia/releases/latest) and unzip it.
 2. Move `Amnesia.app` to your Applications folder.
-3. Open it. macOS blocks it the first time, because the app isn't notarized.
-4. Go to **System Settings → Privacy & Security** and click **Open Anyway**.
+3. Open it. macOS blocks it the first time, because the app isn't notarized. Click **Done**, not **Move to Trash**.
+4. Go to **System Settings → Privacy & Security**, scroll down to **Security** and click **Open Anyway**.
 
 Or skip steps 3 and 4 with this command:
 
