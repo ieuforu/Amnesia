@@ -13,7 +13,6 @@ struct ContentView: View {
             leftovers: store.leftovers,
             isBusy: store.isBusy,
             failureMessage: store.failureMessage,
-            onRefresh: { Task { await store.refresh() } },
             onReveal: reveal,
             onDelete: { selected in Task { await store.delete(selected) } },
             onCleanLeftovers: { selected in Task { await store.clean(selected) } }

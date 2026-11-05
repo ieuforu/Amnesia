@@ -49,6 +49,9 @@ public enum DemoData {
             session(
                 6, .claudeCode, project: "dotfiles",
                 message: "Clean up my zsh config", age: 9 * day, megabytes: 0.6),
+            session(
+                11, .claudeCode, project: "dotfiles",
+                message: "Set up a new Mac from the Brewfile", age: 41 * day, megabytes: 2.3),
 
             session(
                 7, .codex, project: "weather-kit", name: "Radar tiles",
@@ -62,6 +65,9 @@ public enum DemoData {
             session(
                 10, .codex, project: "blog",
                 message: "Fix the broken RSS feed", age: 12 * day, megabytes: 3.4),
+            session(
+                12, .codex, project: "blog",
+                message: "Add a dark theme to the blog", age: 38 * day, megabytes: 9.2),
         ]
     }
 

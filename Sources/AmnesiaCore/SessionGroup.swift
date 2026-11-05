@@ -7,6 +7,7 @@ public struct SessionGroup: Identifiable, Hashable, Sendable {
 
     public var id: String { projectPath ?? "" }
     public var totalSize: Int64 { sessions.reduce(0) { $0 + $1.size } }
+    public var deletableIDs: Set<String> { Set(sessions.filter(\.isDeletable).map(\.id)) }
 
     /// Groups sessions by project, most recently used first.
     public static func grouping(_ sessions: [Session]) -> [SessionGroup] {

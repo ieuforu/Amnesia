@@ -11,7 +11,6 @@ struct SessionPanel: View {
     let leftovers: [Leftover]
     let isBusy: Bool
     let failureMessage: String?
-    let onRefresh: () -> Void
     let onReveal: (Session) -> Void
     let onDelete: ([Session]) -> Void
     let onCleanLeftovers: ([Leftover]) -> Void
@@ -19,10 +18,14 @@ struct SessionPanel: View {
     @AppStorage("selectedSource") private var selectedSource = SessionSource.claudeCode
     @State private var selectedIDs: Set<String> = []
     @State private var isConfirmingDelete = false
+    /// The row asking to confirm its own delete, so the choice stays under the
+    /// pointer instead of moving to the footer.
+    @State private var confirmingRowID: String?
     @State private var isConfirmingCleanup = false
     @State private var listHeight: CGFloat = 0
 
     private static let maxListHeight: CGFloat = 440
+    private static let staleDays = 30
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -44,8 +47,10 @@ struct SessionPanel: View {
             Spacer()
             Text(summary)
                 .font(.system(size: 13))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.panelSecondary)
                 .monospacedDigit()
+                .contentTransition(.numericText())
+                .animation(.snappy(duration: 0.25), value: summary)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
@@ -66,6 +71,7 @@ struct SessionPanel: View {
             // Selection stays within one agent, so a delete can't span both.
             selectedIDs = []
             isConfirmingDelete = false
+            confirmingRowID = nil
             isConfirmingCleanup = false
         }
     }
@@ -76,13 +82,25 @@ struct SessionPanel: View {
 
     private var summary: String {
         let visible = sessions(from: selectedSource)
-        let size = visible.reduce(0) { $0 + $1.size }
-        return "\(visible.count) · \(size.formatted(.byteCount(style: .file)))"
+        return "\(visible.count) · \(totalSize(of: visible))"
     }
 
     /// Sessions that started running after being checked don't count.
     private var selectedSessions: [Session] {
-        sessions(from: selectedSource).filter { selectedIDs.contains($0.id) && !$0.isActive }
+        sessions(from: selectedSource).filter { selectedIDs.contains($0.id) && $0.isDeletable }
+    }
+
+    private var staleSessions: [Session] {
+        sessions(from: selectedSource).filter { $0.isDeletable && $0.isOlder(thanDays: Self.staleDays) }
+    }
+
+    private func delete(_ session: Session) {
+        confirmingRowID = nil
+        onDelete([session])
+    }
+
+    private func totalSize(of sessions: [Session]) -> String {
+        sessions.reduce(0) { $0 + $1.size }.formatted(.byteCount(style: .file))
     }
 
     private var visibleLeftovers: [Leftover] {
@@ -98,7 +116,7 @@ struct SessionPanel: View {
         if groups.isEmpty, visibleLeftovers.isEmpty {
             Text(isBusy ? "Scanning…" : "No Sessions")
                 .font(.system(size: 13))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.panelSecondary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
         } else {
@@ -108,15 +126,21 @@ struct SessionPanel: View {
                         SessionGroupView(
                             group: group,
                             selectedIDs: $selectedIDs,
-                            onReveal: onReveal
+                            confirmingRowID: $confirmingRowID,
+                            isBusy: isBusy,
+                            onReveal: onReveal,
+                            onDelete: delete
                         )
+                        .transition(.opacity)
                     }
                     if !visibleLeftovers.isEmpty {
                         LeftoversView(leftovers: visibleLeftovers)
                     }
                 }
+                .animation(.easeOut(duration: 0.18), value: groups.flatMap { $0.sessions.map(\.id) })
                 .onGeometryChange(for: CGFloat.self, of: \.size.height) { listHeight = $0 }
             }
+            .onChange(of: selectedIDs) { confirmingRowID = nil }
             .scrollBounceBehavior(.basedOnSize)
             .scrollIndicators(.never)
             // Fit short lists exactly, and scroll long ones.
@@ -129,7 +153,7 @@ struct SessionPanel: View {
         if let failureMessage {
             Text(failureMessage)
                 .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.panelSecondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 14)
                 .padding(.bottom, 5)
@@ -137,7 +161,7 @@ struct SessionPanel: View {
 
         if isConfirmingDelete, !selectedSessions.isEmpty {
             Confirmation(
-                title: "Delete \(sessionCount(selectedSessions))?",
+                title: "Delete \(sessionCount(selectedSessions)) (\(totalSize(of: selectedSessions)))?",
                 explanation: deleteExplanation,
                 actionTitle: "Delete",
                 isBusy: isBusy,
@@ -167,9 +191,11 @@ struct SessionPanel: View {
         } else {
             VStack(spacing: 0) {
                 if selectedSessions.isEmpty {
-                    MenuRow(title: "Refresh", action: onRefresh)
-                        .keyboardShortcut("r")
-                        .disabled(isBusy)
+                    if !staleSessions.isEmpty {
+                        MenuRow(title: "Select Older Than \(Self.staleDays) Days") {
+                            selectedIDs = Set(staleSessions.map(\.id))
+                        }
+                    }
                     if !visibleLeftovers.isEmpty {
                         MenuRow(title: "Clean Up Leftovers…") {
                             isConfirmingCleanup = true
@@ -178,6 +204,9 @@ struct SessionPanel: View {
                 } else {
                     MenuRow(title: "Delete \(sessionCount(selectedSessions))…") {
                         isConfirmingDelete = true
+                    }
+                    MenuRow(title: "Deselect All") {
+                        selectedIDs = []
                     }
                 }
                 MenuRow(title: "Quit Amnesia") {
@@ -221,7 +250,7 @@ private struct Confirmation: View {
 
             Text(explanation)
                 .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.panelSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
@@ -248,7 +277,7 @@ private struct LeftoversView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Leftovers")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.panelSecondary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 3)
 
@@ -258,7 +287,7 @@ private struct LeftoversView: View {
 
                 Text(details)
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.panelSecondary)
                     .monospacedDigit()
             }
             .padding(.leading, 32)
@@ -331,17 +360,33 @@ private struct MenuRow: View {
 private struct SessionGroupView: View {
     let group: SessionGroup
     @Binding var selectedIDs: Set<String>
+    @Binding var confirmingRowID: String?
+    let isBusy: Bool
     let onReveal: (Session) -> Void
+    let onDelete: (Session) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(title)
+            Button(action: toggleGroup) {
+                HStack(spacing: 8) {
+                    Text(title)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    if selectedCount > 0 {
+                        Text("\(selectedCount) of \(group.deletableIDs.count)")
+                            .monospacedDigit()
+                    }
+                }
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .foregroundStyle(.panelSecondary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 3)
-                .help(fullPath)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(group.deletableIDs.isEmpty)
+            .modifier(HoverHighlight())
+            .help("\(fullPath) — click to select or deselect all")
 
             ForEach(group.sessions) { session in
                 SessionRow(
@@ -349,9 +394,33 @@ private struct SessionGroupView: View {
                     isSelected: selectedIDs.contains(session.id),
                     alwaysShowsCheckbox: !selectedIDs.isEmpty,
                     onToggle: { selectedIDs.formSymmetricDifference([session.id]) },
-                    onReveal: { onReveal(session) }
+                    isConfirmingDelete: confirmingRowID == session.id,
+                    isBusy: isBusy,
+                    onReveal: { onReveal(session) },
+                    onRequestDelete: { setConfirmingRow(session.id) },
+                    onCancelDelete: { setConfirmingRow(nil) },
+                    onDelete: { onDelete(session) }
                 )
+                .transition(.opacity)
             }
+        }
+    }
+
+    private func setConfirmingRow(_ id: String?) {
+        withAnimation(.snappy(duration: 0.2)) {
+            confirmingRowID = id
+        }
+    }
+
+    private var selectedCount: Int {
+        group.deletableIDs.intersection(selectedIDs).count
+    }
+
+    private func toggleGroup() {
+        if selectedCount == group.deletableIDs.count {
+            selectedIDs.subtract(group.deletableIDs)
+        } else {
+            selectedIDs.formUnion(group.deletableIDs)
         }
     }
 
@@ -373,46 +442,56 @@ private struct SessionRow: View {
     let isSelected: Bool
     let alwaysShowsCheckbox: Bool
     let onToggle: () -> Void
+    let isConfirmingDelete: Bool
+    let isBusy: Bool
     let onReveal: () -> Void
+    let onRequestDelete: () -> Void
+    let onCancelDelete: () -> Void
+    let onDelete: () -> Void
 
     @State private var isHovered = false
+
+    private static let hoverFade = Animation.easeOut(duration: 0.12)
 
     var body: some View {
         HStack(spacing: 6) {
             checkbox
 
             Button(action: onReveal) {
-                HStack(spacing: 9) {
+                HStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(session.title ?? "No Message")
                             .font(.system(size: 13))
-                            .foregroundStyle(session.title == nil ? .secondary : .primary)
+                            .foregroundStyle(session.title == nil ? Color.panelSecondary : Color.primary)
                             .lineLimit(1)
 
-                        HStack(spacing: 4) {
-                            Text(session.updatedAt, format: .relative(presentation: .named))
-                            Text("·")
-                            Text(session.size.formatted(.byteCount(style: .file)))
+                        ZStack(alignment: .leading) {
+                            if isConfirmingDelete {
+                                Text(deleteWarning)
+                                    .transition(.opacity)
+                            } else {
+                                HStack(spacing: 4) {
+                                    Text(session.updatedAt, format: .relative(presentation: .named))
+                                    Text("·")
+                                    Text(session.size.formatted(.byteCount(style: .file)))
+                                }
+                                .transition(.opacity)
+                            }
                         }
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.panelSecondary)
                         .monospacedDigit()
+                        .lineLimit(1)
                     }
 
                     Spacer(minLength: 0)
-
-                    if session.isActive {
-                        Circle()
-                            .fill(.green)
-                            .frame(width: 7, height: 7)
-                            .help("In use")
-                            .accessibilityLabel("In use")
-                    }
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Show in Finder")
+
+            trailingControl
         }
         .padding(.leading, 10)
         .padding(.trailing, 14)
@@ -421,24 +500,97 @@ private struct SessionRow: View {
         .onHover { isHovered = $0 }
     }
 
+    private var deleteWarning: String {
+        switch session.source {
+        case .claudeCode: "Its prompts are removed for good"
+        case .codex: "It can't be resumed after this"
+        }
+    }
+
+    /// The trash button stays hidden rather than removed while idle, so hovering
+    /// never shifts the row. It also hides during a selection, which the footer
+    /// acts on.
+    @ViewBuilder
+    private var trailingControl: some View {
+        if !session.isDeletable {
+            Circle()
+                .fill(.green)
+                .frame(width: 7, height: 7)
+                .frame(width: 16, height: 16)
+                .help("In use")
+                .accessibilityLabel("In use")
+        } else if isConfirmingDelete {
+            Button("Delete", role: .destructive, action: onDelete)
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .controlSize(.small)
+                .disabled(isBusy)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+
+            // Takes the trash button's exact spot, so an accidental double
+            // click cancels instead of deleting.
+            iconButton("xmark", label: "Cancel", action: onCancelDelete)
+                .keyboardShortcut(.cancelAction)
+                .transition(.opacity)
+        } else {
+            iconButton("trash", label: "Delete", action: onRequestDelete)
+                .opacity(isHovered && !alwaysShowsCheckbox ? 1 : 0)
+                .animation(Self.hoverFade, value: isHovered)
+                .disabled(alwaysShowsCheckbox)
+                .transition(.opacity)
+        }
+    }
+
+    private func iconButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12))
+                .foregroundStyle(.panelSecondary)
+                .frame(width: 16, height: 16)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(label)
+        .accessibilityLabel(label)
+    }
+
     /// Sessions in use have no checkbox, because they can't be deleted.
     @ViewBuilder
     private var checkbox: some View {
-        if session.isActive {
+        if !session.isDeletable {
             Color.clear.frame(width: 16, height: 16)
         } else {
             Button(action: onToggle) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                circle
                     .font(.system(size: 14))
-                    .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                     .frame(width: 16, height: 16)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .opacity(isHovered || isSelected || alwaysShowsCheckbox ? 1 : 0)
+            .animation(Self.hoverFade, value: isHovered)
             .accessibilityLabel(isSelected ? "Deselect" : "Select")
         }
     }
+
+    /// The filled symbol uses an opaque white mark, because its default cut-out
+    /// mark lets the glass show through and is hard to see.
+    private var circle: some View {
+        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(
+                isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.panelSecondary),
+                AnyShapeStyle(.tint)
+            )
+            .contentTransition(.symbolEffect(.replace))
+            .animation(.snappy(duration: 0.15), value: isSelected)
+    }
+}
+
+extension ShapeStyle where Self == Color {
+    /// Darker than the system secondary style, which washes out on glass when
+    /// something bright sits behind the panel.
+    fileprivate static var panelSecondary: Color { .primary.opacity(0.72) }
 }
 
 extension SessionSource {

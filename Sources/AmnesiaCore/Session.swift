@@ -18,6 +18,14 @@ public struct Session: Identifiable, Hashable, Sendable {
     /// The best label for the session, if it has one.
     public var title: String? { name ?? firstMessage }
 
+    /// Sessions in use can't be selected or deleted.
+    public var isDeletable: Bool { !isActive }
+
+    /// Whether the session was last used more than `days` days before `now`.
+    public func isOlder(thanDays days: Int, now: Date = Date()) -> Bool {
+        now.timeIntervalSince(updatedAt) > TimeInterval(days) * 24 * 60 * 60
+    }
+
     public init(
         id: String,
         source: SessionSource,
