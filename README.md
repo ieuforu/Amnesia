@@ -22,13 +22,14 @@ Coding agents keep every conversation on disk: transcripts, prompt history, file
 - Shows each session's name or first message, time and size
 - Deletes one session in place, or many at once by project or age, and protects any that are in use
 - Finds and cleans up records of sessions that no longer exist
-- Opens a full window to preview a session and see its files before you clear it
+- Opens a full-screen map of what's stored: area shows size, and tiles dissolve as they go unused
+- Previews a session and shows its files on disk before you clear it
 - Reveals any session's file in Finder
 
 Desktop apps aren't supported yet.
 
 <p align="center">
-  <img src="docs/demo.gif" width="620" alt="Selecting and deleting sessions in Amnesia">
+  <img src="docs/demo.gif" width="620" alt="Opening the Amnesia map, zooming into a project and deleting a session">
 </p>
 
 ## What deleting does
