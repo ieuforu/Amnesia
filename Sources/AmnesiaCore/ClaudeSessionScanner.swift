@@ -30,7 +30,7 @@ struct ClaudeSessionScanner {
             source: .claudeCode,
             name: Self.customTitle(in: url),
             projectPath: records.lazy.compactMap { $0["cwd"] as? String }.first,
-            firstMessage: MessageText.firstTyped(in: records, source: .claudeCode),
+            firstMessage: MessageText.firstTyped(inHead: records, of: url, source: .claudeCode),
             updatedAt: file.updatedAt,
             size: file.size,
             fileURL: url,

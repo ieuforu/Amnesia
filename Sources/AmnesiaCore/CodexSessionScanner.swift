@@ -27,7 +27,7 @@ struct CodexSessionScanner {
             source: .codex,
             name: names[id],
             projectPath: metadata?["cwd"] as? String,
-            firstMessage: MessageText.firstTyped(in: records, source: .codex),
+            firstMessage: MessageText.firstTyped(inHead: records, of: url, source: .codex),
             updatedAt: file.updatedAt,
             size: file.size,
             fileURL: url,

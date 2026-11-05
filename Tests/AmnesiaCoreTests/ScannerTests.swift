@@ -54,6 +54,22 @@ private let codexID = "bbbbbbbb-0000-7000-8000-000000000002"
         #expect(!session.isActive)
     }
 
+    @Test func findsTheFirstMessagePastLongToolOutput() throws {
+        let home = FakeHome()
+        defer { home.remove() }
+        let padding = String(repeating: "x", count: JSONLSample.defaultByteLimit * 2)
+        try home.write(
+            [
+                #"{"type":"user","cwd":"/work/app","message":{"content":[{"type":"tool_result","content":"\#(padding)"}]}}"#,
+                #"{"type":"user","cwd":"/work/app","message":{"content":"typed late"}}"#,
+                #"{"type":"assistant","message":{"content":[{"type":"text","text":"\#(padding)"}]}}"#,
+            ],
+            to: ".claude/projects/-work-app/\(claudeID).jsonl"
+        )
+
+        #expect(try #require(scan(home).first).firstMessage == "typed late")
+    }
+
     @Test func readsTextBlocksFromArrayContent() throws {
         let home = FakeHome()
         defer { home.remove() }
