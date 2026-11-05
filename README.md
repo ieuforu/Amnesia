@@ -1,6 +1,16 @@
-# Amnesia
+<p align="center">
+  <img src="docs/icon.png" width="128" height="128" alt="Amnesia app icon">
+</p>
 
-Give your AI amnesia. A macOS menu bar app to find and clear local Claude Code and Codex sessions.
+<h1 align="center">Amnesia</h1>
+
+<p align="center">
+  Give your AI amnesia. A macOS menu bar app to find and clear local Claude Code and Codex sessions.
+</p>
+
+<p align="center">
+  <img src="docs/panel.png" width="419" alt="Amnesia's menu bar panel listing sessions by project">
+</p>
 
 > **Status: early development.** Deleting works, but there is no release yet, so build from source.
 
@@ -8,14 +18,19 @@ Give your AI amnesia. A macOS menu bar app to find and clear local Claude Code a
 
 Coding agents keep every conversation on disk: transcripts, prompt history, file snapshots and logs. Deleting one transcript by hand usually leaves the rest behind, including the text you typed. Amnesia aims to show what is stored and remove it properly.
 
-## Planned for v1
+## Features
 
-- List Claude Code CLI and Codex CLI sessions, grouped by project
-- Show each session's time, size and first message
-- Delete selected sessions, and skip any that are still running
-- Find and clean up records of sessions that no longer exist
+- Lists Claude Code CLI and Codex CLI sessions, grouped by project
+- Shows each session's name or first message, time and size
+- Deletes selected sessions, and protects any that are in use
+- Finds and cleans up records of sessions that no longer exist
+- Reveals any session's file in Finder
 
-Desktop apps are out of scope for v1.
+Desktop apps aren't supported yet.
+
+<p align="center">
+  <img src="docs/demo.gif" width="620" alt="Selecting and deleting sessions in Amnesia">
+</p>
 
 ## What deleting does
 
