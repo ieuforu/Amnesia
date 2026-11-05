@@ -2,7 +2,7 @@
 
 Give your AI amnesia. A macOS menu bar app to find and clear local Claude Code and Codex sessions.
 
-> **Status: early development.** Amnesia lists sessions, but deleting is not implemented yet.
+> **Status: early development.** Deleting works, but there is no release yet, so build from source.
 
 ## Why
 
@@ -16,6 +16,17 @@ Coding agents keep every conversation on disk: transcripts, prompt history, file
 - Find leftovers whose session is already gone
 
 Desktop apps are out of scope for v1.
+
+## What deleting does
+
+| | Claude Code | Codex |
+|---|---|---|
+| Transcript | Moved to the Trash | Copy moved to the Trash |
+| Other records | Removed for good | Removed for good by `codex delete` |
+| Typed prompts in `history.jsonl` | Removed for good | Removed for good |
+| Project memory | Never touched | Not applicable |
+
+Transcripts stay on your Mac until you empty the Trash. Sessions that are running can't be selected, and each one is checked again just before it's deleted.
 
 ## Build from source
 

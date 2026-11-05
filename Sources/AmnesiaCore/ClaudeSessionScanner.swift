@@ -62,7 +62,7 @@ struct ClaudeSessionScanner {
 
     /// Running sessions register `sessions/<pid>.json`, which outlives a crash,
     /// so the pid has to be checked too.
-    private func activeSessionIDs() -> Set<String> {
+    func activeSessionIDs() -> Set<String> {
         let registrations = contents(of: claudeHome.appendingPathComponent("sessions"))
             .filter { $0.pathExtension == "json" }
 

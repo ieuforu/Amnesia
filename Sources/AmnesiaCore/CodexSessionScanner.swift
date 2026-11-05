@@ -9,11 +9,16 @@ struct CodexSessionScanner {
     var namesOfOpenFiles: ([URL]) -> Set<String> = OpenFiles.names
 
     func scan() -> [Session] {
-        let openLocks = namesOfOpenFiles(writerLocks())
+        let openLocks = openLocks()
 
         return ["sessions", "archived_sessions"]
             .flatMap { rollouts(in: codexHome.appendingPathComponent($0)) }
             .compactMap { session(at: $0, openLocks: openLocks) }
+    }
+
+    /// The lock files of sessions a running Codex process owns.
+    func openLocks() -> Set<String> {
+        namesOfOpenFiles(writerLocks())
     }
 
     private func session(at url: URL, openLocks: Set<String>) -> Session? {

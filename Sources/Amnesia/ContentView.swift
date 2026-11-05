@@ -10,9 +10,11 @@ struct ContentView: View {
     var body: some View {
         SessionPanel(
             sessions: store.sessions,
-            isScanning: store.isScanning,
+            isBusy: store.isBusy,
+            failureMessage: store.failureMessage,
             onRefresh: { Task { await store.refresh() } },
-            onReveal: reveal
+            onReveal: reveal,
+            onDelete: { selected in Task { await store.delete(selected) } }
         )
         .task { await store.refresh() }
     }
