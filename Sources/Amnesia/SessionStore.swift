@@ -4,7 +4,7 @@ import Observation
 @MainActor
 @Observable
 final class SessionStore {
-    private(set) var groups: [SessionGroup] = []
+    private(set) var sessions: [Session] = []
     private(set) var isScanning = false
 
     func refresh() async {
@@ -12,8 +12,8 @@ final class SessionStore {
         isScanning = true
         defer { isScanning = false }
 
-        groups = await Task.detached(priority: .userInitiated) {
-            SessionGroup.grouping(SessionScanner().scan())
+        sessions = await Task.detached(priority: .userInitiated) {
+            SessionScanner().scan()
         }.value
     }
 }

@@ -7,10 +7,12 @@ import SwiftUI
 /// It only displays what it is given, so it can render sample data as easily
 /// as real sessions.
 struct SessionPanel: View {
-    let groups: [SessionGroup]
+    let sessions: [Session]
     let isScanning: Bool
     let onRefresh: () -> Void
+    let onReveal: (Session) -> Void
 
+    @AppStorage("selectedSource") private var selectedSource = SessionSource.claudeCode
     @State private var listHeight: CGFloat = 0
 
     private static let maxListHeight: CGFloat = 440
@@ -18,6 +20,7 @@ struct SessionPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            sourcePicker
             PanelDivider()
             content
             PanelDivider()
@@ -41,10 +44,31 @@ struct SessionPanel: View {
         .padding(.vertical, 6)
     }
 
+    private var sourcePicker: some View {
+        Picker("Source", selection: $selectedSource) {
+            ForEach(SessionSource.allCases) { source in
+                Text("\(source.tabTitle)  \(sessions(from: source).count)").tag(source)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .padding(.horizontal, 14)
+        .padding(.top, 2)
+        .padding(.bottom, 4)
+    }
+
+    private func sessions(from source: SessionSource) -> [Session] {
+        sessions.filter { $0.source == source }
+    }
+
     private var summary: String {
-        let sessions = groups.flatMap(\.sessions)
-        let size = sessions.reduce(0) { $0 + $1.size }
-        return "\(sessions.count) · \(size.formatted(.byteCount(style: .file)))"
+        let visible = sessions(from: selectedSource)
+        let size = visible.reduce(0) { $0 + $1.size }
+        return "\(visible.count) · \(size.formatted(.byteCount(style: .file)))"
+    }
+
+    private var groups: [SessionGroup] {
+        SessionGroup.grouping(sessions(from: selectedSource))
     }
 
     @ViewBuilder
@@ -59,7 +83,7 @@ struct SessionPanel: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(groups) { group in
-                        SessionGroupView(group: group)
+                        SessionGroupView(group: group, onReveal: onReveal)
                     }
                 }
                 .onGeometryChange(for: CGFloat.self, of: \.size.height) { listHeight = $0 }
@@ -127,6 +151,7 @@ private struct MenuRow: View {
 
 private struct SessionGroupView: View {
     let group: SessionGroup
+    let onReveal: (Session) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -139,7 +164,7 @@ private struct SessionGroupView: View {
                 .help(fullPath)
 
             ForEach(group.sessions) { session in
-                SessionRow(session: session)
+                SessionRow(session: session) { onReveal(session) }
             }
         }
     }
@@ -159,59 +184,52 @@ private struct SessionGroupView: View {
 
 private struct SessionRow: View {
     let session: Session
+    let action: () -> Void
 
     var body: some View {
-        HStack(spacing: 9) {
-            SourceIcon(source: session.source)
+        Button(action: action) {
+            HStack(spacing: 9) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(session.firstMessage ?? "No Message")
+                        .font(.system(size: 13))
+                        .foregroundStyle(session.firstMessage == nil ? .secondary : .primary)
+                        .lineLimit(1)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(session.firstMessage ?? "No Message")
-                    .font(.system(size: 13))
-                    .foregroundStyle(session.firstMessage == nil ? .secondary : .primary)
-                    .lineLimit(1)
-
-                HStack(spacing: 4) {
-                    Text(session.updatedAt, format: .relative(presentation: .named))
-                    Text("·")
-                    Text(session.size.formatted(.byteCount(style: .file)))
+                    HStack(spacing: 4) {
+                        Text(session.updatedAt, format: .relative(presentation: .named))
+                        Text("·")
+                        Text(session.size.formatted(.byteCount(style: .file)))
+                    }
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
                 }
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-            }
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
 
-            if session.isActive {
-                Circle()
-                    .fill(.green)
-                    .frame(width: 7, height: 7)
-                    .help("In use")
-                    .accessibilityLabel("In use")
+                if session.isActive {
+                    Circle()
+                        .fill(.green)
+                        .frame(width: 7, height: 7)
+                        .help("In use")
+                        .accessibilityLabel("In use")
+                }
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 4)
+        .buttonStyle(.plain)
         .modifier(HoverHighlight())
+        .help("Show in Finder")
     }
 }
 
-private struct SourceIcon: View {
-    let source: SessionSource
-
-    var body: some View {
-        Image(systemName: symbol)
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(.secondary)
-            .frame(width: 18)
-            .help(source.displayName)
-            .accessibilityLabel(source.displayName)
-    }
-
-    private var symbol: String {
-        switch source {
-        case .claudeCode: "asterisk"
-        case .codex: "terminal"
+extension SessionSource {
+    fileprivate var tabTitle: String {
+        switch self {
+        case .claudeCode: "Claude"
+        case .codex: "Codex"
         }
     }
 }
