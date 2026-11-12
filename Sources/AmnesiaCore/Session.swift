@@ -9,6 +9,8 @@ public struct Session: Identifiable, Hashable, Sendable {
     /// The directory the session ran in, when the transcript records one.
     public let projectPath: String?
     public let firstMessage: String?
+    /// The last user turn found in the bounded transcript sample.
+    public let latestUserMessage: String?
     public let updatedAt: Date
     public let size: Int64
     public let fileURL: URL
@@ -42,6 +44,7 @@ public struct Session: Identifiable, Hashable, Sendable {
         name: String? = nil,
         projectPath: String?,
         firstMessage: String?,
+        latestUserMessage: String? = nil,
         updatedAt: Date,
         size: Int64,
         fileURL: URL,
@@ -52,6 +55,7 @@ public struct Session: Identifiable, Hashable, Sendable {
         self.name = name
         self.projectPath = projectPath
         self.firstMessage = firstMessage
+        self.latestUserMessage = latestUserMessage
         self.updatedAt = updatedAt
         self.size = size
         self.fileURL = fileURL

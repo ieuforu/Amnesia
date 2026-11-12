@@ -21,6 +21,7 @@ struct CodexSessionScanner {
             let id = metadata?["id"] as? String
                 ?? AgentPaths.codexSessionID(inFileName: url.lastPathComponent)
         else { return nil }
+        let tail = file.size < Int64(JSONLSample.defaultByteLimit) ? records : JSONLSample.tail(of: url)
 
         return Session(
             id: id,
@@ -28,6 +29,7 @@ struct CodexSessionScanner {
             name: names[id],
             projectPath: metadata?["cwd"] as? String,
             firstMessage: MessageText.firstTyped(inHead: records, of: url, source: .codex),
+            latestUserMessage: MessageText.latestTyped(in: tail, source: .codex),
             updatedAt: file.updatedAt,
             size: file.size,
             fileURL: url,
@@ -46,7 +48,8 @@ struct CodexSessionScanner {
                 let entry = object as? [String: Any],
                 let id = entry["id"] as? String,
                 let name = entry["thread_name"] as? String,
-                !name.isEmpty
+                !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                !MessageText.isCodexPreambleTitle(name)
             else { continue }
             names[id] = name
         }

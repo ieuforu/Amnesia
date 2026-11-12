@@ -1,19 +1,29 @@
 #!/bin/bash
-# Builds a universal release Amnesia.app bundle at .build/Amnesia.app.
+# Builds a universal release Amnesia.app, or a local bundle for the dev watcher.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 build_flags=(-c release --arch arm64 --arch x86_64)
+app=.build/Amnesia.app
+if [[ ${1:-} == --preview && $# == 1 ]]; then
+    build_flags=(-c debug)
+    app='.build/Amnesia Preview Next.app'
+elif [[ $# != 0 ]]; then
+    echo 'Usage: scripts/build-app.sh [--preview]' >&2
+    exit 2
+fi
 swift build "${build_flags[@]}" --product Amnesia
 binary_dir=$(swift build "${build_flags[@]}" --show-bin-path)
 
-app=.build/Amnesia.app
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary_dir/Amnesia" "$app/Contents/MacOS/Amnesia"
 cp Resources/Info.plist "$app/Contents/Info.plist"
 cp Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+if [[ ${1:-} == --preview ]]; then
+    /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier com.ieuforu.Amnesia.preview' "$app/Contents/Info.plist"
+fi
 
 # SwiftPM records the deployment target as the SDK version, which makes macOS
 # run the app in compatibility mode with the old design. Record the real SDK so

@@ -5,6 +5,7 @@ import Observation
 @Observable
 final class SessionStore {
     private(set) var sessions: [Session] = []
+    private(set) var librarySessions: [Session] = []
     private(set) var leftovers: [Leftover] = []
     private(set) var isBusy = false
     private(set) var failureMessage: String?
@@ -51,7 +52,17 @@ final class SessionStore {
     }
 
     private func reload() async {
-        (sessions, leftovers) = await backend.load()
+        let scanned = await backend.load()
+        sessions = scanned.sessions.sorted { lhs, rhs in
+            if lhs.updatedAt != rhs.updatedAt { return lhs.updatedAt > rhs.updatedAt }
+            if lhs.source != rhs.source { return lhs.source.rawValue < rhs.source.rawValue }
+            if lhs.id != rhs.id { return lhs.id < rhs.id }
+            return lhs.fileURL.path < rhs.fileURL.path
+        }
+        // The map counts bytes on disk; the library lists each conversation once.
+        var seen = Set<SessionReference>()
+        librarySessions = sessions.filter { seen.insert(SessionReference($0)).inserted }
+        leftovers = scanned.leftovers
     }
 
     private static func failureMessage(for results: [DeletionResult]) -> String? {

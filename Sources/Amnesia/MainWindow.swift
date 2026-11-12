@@ -2,35 +2,32 @@ import AppKit
 import SwiftUI
 
 /// Owns the main window. It's created by hand rather than as a SwiftUI scene,
-/// because a scene would open at launch on macOS 14 and this app starts in the
-/// menu bar. The Dock icon appears only while the window is open.
+/// so background and menu bar launches can opt out of activating the window.
+/// The Dock icon appears only while the library is open.
 @MainActor
 final class MainWindowController: NSObject, NSWindowDelegate {
     static let shared = MainWindowController()
 
     private var window: NSWindow?
+    private let libraryUndo = UndoManager()
+    private let opening = LibraryOpening()
 
-    func show(store: SessionStore) {
+    func show(store: SessionStore, activate: Bool = true) {
+        if activate { opening.presentFirstTime() }
         let window = window ?? makeWindow(store: store)
         self.window = window
 
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate()
-        if !window.isVisible {
-            expand(window)
+        if activate {
+            NSApp.activate()
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            window.orderFront(nil)
         }
-        window.makeKeyAndOrderFront(nil)
-    }
-
-    /// Fills the screen at once, because resizing a window every frame would
-    /// compete with the map's own opening animation.
-    private func expand(_ window: NSWindow) {
-        guard let visible = (NSScreen.main ?? window.screen)?.visibleFrame else { return }
-        window.setFrame(visible, display: false)
     }
 
     private func makeWindow(store: SessionStore) -> NSWindow {
-        let content = NSHostingController(rootView: MainView(store: store))
+        let content = NSHostingController(rootView: LibraryWindowView(store: store, undoManager: libraryUndo, opening: opening))
         // Keep the window's own size.
         content.sizingOptions = []
 
@@ -40,6 +37,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.contentMinSize = NSSize(width: 930, height: 520)
+        let screen = NSScreen.main?.visibleFrame.size ?? NSSize(width: 1280, height: 800)
+        window.setContentSize(NSSize(width: min(1180, screen.width - 32), height: min(760, screen.height - 32)))
+        window.center()
         window.isReleasedWhenClosed = false
         window.delegate = self
         return window
@@ -47,5 +47,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        opening.presentFirstTime()
     }
 }

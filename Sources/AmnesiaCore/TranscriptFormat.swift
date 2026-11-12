@@ -4,13 +4,14 @@ enum TranscriptFormat {
     typealias Turn = (role: TranscriptMessage.Role, text: String)
 
     static func turn(in record: [String: Any], source: SessionSource) -> Turn? {
-        let turn =
-            switch source {
-            case .claudeCode: claudeTurn(in: record)
-            case .codex: codexTurn(in: record)
-            }
-        guard let turn, !MessageText.isInjected(turn.text) else { return nil }
-        return turn
+        switch source {
+        case .claudeCode:
+            guard let turn = claudeTurn(in: record), !turn.text.drop(while: \.isWhitespace).hasPrefix("<")
+            else { return nil }
+            return turn
+        case .codex:
+            return codexTurn(in: record)
+        }
     }
 
     private static func claudeTurn(in record: [String: Any]) -> Turn? {
@@ -47,8 +48,12 @@ enum TranscriptFormat {
         else { return nil }
 
         switch payload["role"] as? String {
-        case "user": return (.user, MessageText.joinedText(from: blocks, blockType: "input_text"))
-        case "assistant": return (.agent, MessageText.joinedText(from: blocks, blockType: "output_text"))
+        case "user":
+            let text = MessageText.joinedText(from: blocks, blockType: "input_text", separator: "\n\n")
+            guard let request = MessageText.codexUserText(text) else { return nil }
+            return (.user, request)
+        case "assistant":
+            return (.agent, MessageText.joinedText(from: blocks, blockType: "output_text", separator: "\n\n"))
         default: return nil
         }
     }

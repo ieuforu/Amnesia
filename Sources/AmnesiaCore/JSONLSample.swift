@@ -22,24 +22,21 @@ enum JSONLSample {
     }
 
     static func tail(of url: URL, byteLimit: Int = defaultByteLimit) -> [[String: Any]] {
-        guard
-            let handle = try? FileHandle(forReadingFrom: url),
-            let size = try? handle.seekToEnd()
-        else { return [] }
+        guard byteLimit > 0, let handle = try? FileHandle(forReadingFrom: url) else { return [] }
         defer { try? handle.close() }
 
+        guard let size = try? handle.seekToEnd() else { return [] }
         let start = size > UInt64(byteLimit) ? size - UInt64(byteLimit) : 0
+        // Include the byte before the limit so a line starting at it survives.
+        let offset = start > 0 ? start - 1 : 0
         guard
-            (try? handle.seek(toOffset: start)) != nil,
-            let data = try? handle.readToEnd()
+            (try? handle.seek(toOffset: offset)) != nil,
+            let data = try? handle.read(upToCount: byteLimit + Int(start - offset)),
+            !data.isEmpty
         else { return [] }
 
-        var lines = data.split(separator: 0x0A)
-        if start > 0, !lines.isEmpty {
-            // Reading began mid-line, so the first line is incomplete.
-            lines.removeFirst()
-        }
-        return records(from: lines)
+        let lines = data.split(separator: 0x0A, omittingEmptySubsequences: false)
+        return records(from: start > 0 ? Array(lines.dropFirst()) : lines)
     }
 
     private static func records(from lines: [Data]) -> [[String: Any]] {

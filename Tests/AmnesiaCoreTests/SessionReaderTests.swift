@@ -76,6 +76,22 @@ private func session(_ source: SessionSource, id: String, file: URL) -> Session 
         #expect(detail.messages.map(\.role) == [.user, .agent])
     }
 
+    @Test func codexPreviewShowsRequestInsteadOfAttachmentPreamble() throws {
+        let home = makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let file = home.appendingPathComponent(".codex/sessions/rollout-x-\(id).jsonl")
+        let records = [
+            ##"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions\n\n<INSTRUCTIONS>Formatting rules</INSTRUCTIONS>"}]}}"##,
+            ###"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# Files mentioned by the user:\n\n## mock.png: /tmp/mock.png\nImage attachment: true"},{"type":"input_image","image_url":"data:image/png;base64,"},{"type":"input_text","text":"## My request:\n# Build notes\n\nMove **search** to the top."}]}}"###,
+        ]
+        try write(records.joined(separator: "\n"), to: file)
+
+        let detail = SessionReader(homeDirectory: home).detail(for: session(.codex, id: id, file: file))
+
+        #expect(detail.messages.map(\.text) == ["# Build notes\n\nMove **search** to the top."])
+        #expect(detail.messages.map(\.role) == [.user])
+    }
+
     @Test func longConversationsKeepBothEndsAndMarkTheGap() throws {
         let home = makeHome()
         defer { try? FileManager.default.removeItem(at: home) }

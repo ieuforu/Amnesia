@@ -5,7 +5,7 @@
 <h1 align="center">Amnesia</h1>
 
 <p align="center">
-  Give your AI amnesia. A macOS menu bar app to find and clear local Claude Code and Codex sessions.
+  Give your AI amnesia. A macOS app to find, organize, and clear local Claude Code and Codex sessions.
 </p>
 
 <p align="center">
@@ -22,8 +22,10 @@ Coding agents keep every conversation on disk: transcripts, prompt history, file
 - Shows each session's name or first message, time and size
 - Deletes one session in place, or many at once by project or age, and protects any that are in use
 - Finds and cleans up records of sessions that no longer exist
-- Opens a full-screen map of what's stored: area shows size, and tiles dissolve as they go unused
-- Previews a session and shows its files on disk before you clear it
+- Shows a visual session library organized by launch directory, with one mark per visible conversation
+- Lets you drag sessions into local collections and read transcripts with Markdown formatting
+- Opens a storage map: area shows size, and tiles dissolve as they go unused
+- Opens eligible Claude Code sessions in Ghostty 1.3 or later, or copies the resume command
 - Reveals any session's file in Finder
 
 Desktop apps aren't supported yet.
@@ -62,7 +64,7 @@ Or skip steps 3 and 4 with this command:
 xattr -d com.apple.quarantine /Applications/Amnesia.app
 ```
 
-Amnesia then appears in your menu bar. It has no Dock icon. Requires macOS 14 or later, and the Codex CLI for deleting Codex sessions.
+Amnesia opens its session library and stays available in the menu bar. The Dock icon disappears when the library window closes. To start with just the menu bar item, pass `--menu-bar-only`. Requires macOS 14 or later, and the Codex CLI for deleting Codex sessions.
 
 ## Build from source
 
@@ -75,10 +77,12 @@ open .build/Amnesia.app
 
 Run the tests with `swift test`.
 
+For UI development, run `python3 scripts/dev-app.py --demo`. It opens one preview window and watches the Swift sources and resources. After a successful build, the preview restarts without taking focus; after a failed build, the last working preview stays open. Press Ctrl-C to stop the watcher. Omit `--demo` to use your own sessions; the preview keeps its collections separate from the release app.
+
 To try it without touching real data, or to take screenshots, open it with made-up sessions:
 
 ```bash
-open .build/Amnesia.app --args --demo
+open -n .build/Amnesia.app --args --demo
 ```
 
 Nothing is read or deleted in demo mode.

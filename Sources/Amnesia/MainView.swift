@@ -70,6 +70,7 @@ private struct Region: Identifiable, Equatable {
 /// has already been forgotten. Clicking zooms in a level.
 struct MainView: View {
     let store: SessionStore
+    var onBrowseGroup: ((SessionGroup, SessionSource) -> Void)? = nil
 
     @State private var focusedRegionID: String?
     @State private var selectedID: String?
@@ -79,7 +80,7 @@ struct MainView: View {
     @State private var hasAppeared = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private static let windowSpace = "window"
+    nonisolated private static let windowSpace = "window"
     private static let morph = Animation.snappy(duration: 0.42)
     private static let panelWidth: CGFloat = 400
 
@@ -185,11 +186,20 @@ struct MainView: View {
                     .animation(.snappy(duration: 0.3), value: totalSize(of: scopeSessions))
             }
 
-            Text(insight)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: 420, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 7) {
+                Text(insight)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: 420, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let focusedRegion, let onBrowseGroup {
+                    Button { onBrowseGroup(focusedRegion.group, focusedRegion.source) } label: {
+                        Label("Browse sessions", systemImage: "arrow.up.right")
+                    }
+                    .buttonStyle(LibraryButtonStyle())
+                }
+            }
 
             Spacer(minLength: 16)
 
@@ -752,10 +762,10 @@ private struct DragGhost: View {
 
 // MARK: - Detail
 
-private struct SessionInspector: View {
+struct SessionInspector: View {
     let session: Session
     let store: SessionStore
-    let onDelete: () -> Void
+    var onDelete: (() -> Void)? = nil
 
     @State private var detail: SessionDetail?
 
@@ -766,7 +776,12 @@ private struct SessionInspector: View {
             files
             actions
         }
-        .task { detail = await store.detail(for: session) }
+        .task(id: session) {
+            detail = nil
+            let loaded = await store.detail(for: session)
+            guard !Task.isCancelled else { return }
+            detail = loaded
+        }
     }
 
     private var header: some View {
@@ -781,6 +796,15 @@ private struct SessionInspector: View {
             }
             .font(.system(size: 12))
             .foregroundStyle(.secondary)
+            if let path = session.projectPath {
+                Text((path as NSString).abbreviatingWithTildeInPath)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                    .help(path)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -830,10 +854,10 @@ private struct SessionInspector: View {
             Button("Show in Finder") { store.reveal(session) }
                 .buttonStyle(QuietButtonStyle())
             Spacer()
-            if session.isDeletable {
+            if session.isDeletable, let onDelete {
                 Button("Delete…", action: onDelete)
                     .buttonStyle(DeleteButtonStyle())
-            } else {
+            } else if session.isActive {
                 HStack(spacing: 6) {
                     Circle()
                         .fill(.green)

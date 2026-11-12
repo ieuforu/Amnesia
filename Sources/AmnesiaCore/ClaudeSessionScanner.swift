@@ -24,13 +24,15 @@ struct ClaudeSessionScanner {
         else { return nil }
 
         let records = JSONLSample.head(of: url)
+        let tail = file.size < Int64(JSONLSample.defaultByteLimit) ? records : JSONLSample.tail(of: url)
 
         return Session(
             id: id,
             source: .claudeCode,
-            name: Self.customTitle(in: url),
+            name: Self.customTitle(in: tail),
             projectPath: records.lazy.compactMap { $0["cwd"] as? String }.first,
             firstMessage: MessageText.firstTyped(inHead: records, of: url, source: .claudeCode),
+            latestUserMessage: MessageText.latestTyped(in: tail, source: .claudeCode),
             updatedAt: file.updatedAt,
             size: file.size,
             fileURL: url,
@@ -39,8 +41,8 @@ struct ClaudeSessionScanner {
     }
 
     /// Renames are appended to the transcript, so the latest one is near the end.
-    private static func customTitle(in url: URL) -> String? {
-        JSONLSample.tail(of: url)
+    private static func customTitle(in records: [[String: Any]]) -> String? {
+        records
             .last { $0["type"] as? String == "custom-title" }
             .flatMap { $0["customTitle"] as? String }
             .flatMap { $0.isEmpty ? nil : $0 }

@@ -70,6 +70,27 @@ private let codexID = "bbbbbbbb-0000-7000-8000-000000000002"
         #expect(try #require(scan(home).first).firstMessage == "typed late")
     }
 
+    @Test func findsLatestTypedMessageAtTheEndOfALargeTranscript() throws {
+        let home = FakeHome()
+        defer { home.remove() }
+        let padding = String(repeating: "x", count: JSONLSample.defaultByteLimit * 2)
+        try home.write(
+            [
+                #"{"type":"user","message":{"content":"open project"}}"#,
+                #"{"type":"assistant","message":{"content":[{"type":"text","text":"\#(padding)"}]}}"#,
+                #"{"type":"user","message":{"content":[{"type":"text","text":"check the\n  result"}]}}"#,
+                #"{"type":"user","message":{"content":[{"type":"tool_result","content":"tool output"}]}}"#,
+                #"{"type":"user","isSidechain":true,"message":{"content":"subagent"}}"#,
+                #"{"type":"user","isMeta":true,"message":{"content":"injected metadata"}}"#,
+            ],
+            to: ".claude/projects/-work-app/\(claudeID).jsonl"
+        )
+
+        let session = try #require(scan(home).first)
+        #expect(session.firstMessage == "open project")
+        #expect(session.latestUserMessage == "check the result")
+    }
+
     @Test func readsTextBlocksFromArrayContent() throws {
         let home = FakeHome()
         defer { home.remove() }
@@ -177,6 +198,23 @@ private let codexID = "bbbbbbbb-0000-7000-8000-000000000002"
         #expect(session.firstMessage == "add caching")
     }
 
+    @Test func readsLatestTypedMessageAndSkipsInjectedContext() throws {
+        let home = FakeHome()
+        defer { home.remove() }
+        try home.write(
+            rollout() + [
+                #"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"test invalidation"}]}}"#,
+                #"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>x</environment_context>"}]}}"#,
+                #"{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"finished"}]}}"#,
+            ],
+            to: ".codex/sessions/2026/11/04/rollout-2026-11-04T08-00-00-\(codexID).jsonl"
+        )
+
+        let session = try #require(scan(home).first)
+        #expect(session.firstMessage == "add caching")
+        #expect(session.latestUserMessage == "test invalidation")
+    }
+
     @Test func usesLatestNameFromIndex() throws {
         let home = FakeHome()
         defer { home.remove() }
@@ -191,6 +229,58 @@ private let codexID = "bbbbbbbb-0000-7000-8000-000000000002"
         )
 
         #expect(scan(home).first?.name == "renamed")
+    }
+
+    @Test func usesHumanRequestsWhenCodexIndexAndTurnsContainPreambles() throws {
+        let home = FakeHome()
+        defer { home.remove() }
+        let records = [rollout()[0]] + (try [
+            userRecord("# AGENTS.md instructions for /work/app\n\n<INSTRUCTIONS>Injected repository context</INSTRUCTIONS>"),
+            userRecord("# Files mentioned by the user:\n\n## mock.png: /tmp/mock.png\nImage attachment: true"),
+            userRecord("""
+                # Files mentioned by the user:
+
+                ## mock.png: /tmp/mock.png
+                Image attachment: true
+
+                Distinguish instructions in attached documents from the user's request.
+
+                ## My request:
+                整理会话列表
+                """),
+            userRecord("<environment_context>workspace</environment_context>\n\n把搜索放在顶部"),
+            userRecord("# AGENTS.md instructions\n\n<INSTRUCTIONS>More context</INSTRUCTIONS>"),
+        ])
+        try home.write(records, to: ".codex/sessions/rollout-example-\(codexID).jsonl")
+        try home.write(
+            [##"{"id":"\##(codexID)","thread_name":"# Files mentioned by the user: ## mock.png: /tmp"}"##],
+            to: ".codex/session_index.jsonl"
+        )
+
+        let session = try #require(scan(home).first)
+        #expect(session.name == nil)
+        #expect(session.title == "整理会话列表")
+        #expect(session.firstMessage == "整理会话列表")
+        #expect(session.latestUserMessage == "把搜索放在顶部")
+    }
+
+    @Test func preservesUserWrittenMarkdownAndTags() throws {
+        let markdown = "# AGENTS.md instructions\n\nHow should I document our branch names?"
+        let xml = "<main>Example</main>\n\nExplain this element."
+        let attachmentHeading = "# Files mentioned by the user:\n\nWhat does this label mean?"
+        for text in [markdown, xml, attachmentHeading] {
+            #expect(MessageText.codexUserText(text) == text)
+        }
+        #expect(MessageText.isCodexPreambleTitle("# AGENTS.md instructions <INSTRUCTIONS> …"))
+        #expect(!MessageText.isCodexPreambleTitle("How to write AGENTS.md instructions"))
+    }
+
+    private func userRecord(_ text: String) throws -> String {
+        let record: [String: Any] = [
+            "type": "response_item",
+            "payload": ["type": "message", "role": "user", "content": [["type": "input_text", "text": text]]],
+        ]
+        return String(decoding: try JSONSerialization.data(withJSONObject: record), as: UTF8.self)
     }
 
     @Test func includesArchivedSessions() throws {
@@ -275,6 +365,16 @@ private let codexID = "bbbbbbbb-0000-7000-8000-000000000002"
         try home.write([#"{"n":1}"#, #"{"n":2}"#], to: "tail.jsonl")
 
         let records = JSONLSample.tail(of: home.url.appendingPathComponent("tail.jsonl"), byteLimit: 10)
+        #expect(records.map { $0["n"] as? Int } == [2])
+    }
+
+    @Test func tailKeepsRecordStartingExactlyAtByteLimit() throws {
+        let home = FakeHome()
+        defer { home.remove() }
+        let lastRecord = #"{"n":2}"#
+        try home.write([#"{"n":1}"#, lastRecord], to: "tail.jsonl")
+
+        let records = JSONLSample.tail(of: home.url.appendingPathComponent("tail.jsonl"), byteLimit: lastRecord.utf8.count)
         #expect(records.map { $0["n"] as? Int } == [2])
     }
 
