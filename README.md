@@ -5,34 +5,32 @@
 <h1 align="center">Amnesia</h1>
 
 <p align="center">
-  Give your AI amnesia. A macOS app to find, organize, and clear local Claude Code and Codex sessions.
+  A macOS app to find, organize, and clear local Claude Code and Codex CLI sessions.
 </p>
 
 <p align="center">
-  <img src="docs/panel.png" width="419" alt="Amnesia's menu bar panel listing sessions by project">
+  <img src="docs/session-library.png" width="1000" alt="Amnesia’s session library, with rows of session stamps grouped by launch directory">
 </p>
 
-## Why
+## Find and organize sessions
 
-Coding agents keep every conversation on disk: transcripts, prompt history, file snapshots and logs. Deleting one transcript by hand usually leaves the rest behind, including the text you typed. Amnesia aims to show what is stored and remove it properly.
+**Library** groups conversations by the directory where they started. Each stamp is one session: blue with one line for Codex, green with two for Claude Code. The newest sessions appear first in each row. Hover to see the title and last update, or click to open the reader. Click the directory name to see all its sessions, use **Open latest** to jump back to the most recent one, or press **⌘F** to search by title, last prompt, or path.
 
-## Features
+Click **+ New** to create a collection, then drag a stamp onto its name. A session can belong to more than one collection; adding or removing it only changes Amnesia’s local collection metadata. The original session files stay where they are. You can also use **List** for a searchable table with source filters and collection controls.
 
-- Lists Claude Code CLI and Codex CLI sessions, grouped by project
-- Shows each session's name or first message, time and size
-- Deletes one session in place, or many at once by project or age, and protects any that are in use
-- Finds and cleans up records of sessions that no longer exist
-- Shows a visual session library organized by launch directory, with one mark per visible conversation
-- Lets you drag sessions into local collections and read transcripts with Markdown formatting
-- Opens a storage map: area shows size, and tiles dissolve as they go unused
-- Opens eligible Claude Code sessions in Ghostty 1.3 or later, or copies the resume command
-- Reveals any session's file in Finder
-
-Desktop apps aren't supported yet.
+The reader opens in the same window and keeps your place in the library when you go back. It renders Markdown, including code and tables, and can reveal the session file in Finder. For eligible Claude Code sessions, use **Continue in Ghostty** (1.3 or later) to open a tab in the original directory, or copy the resume command to run in another terminal.
 
 <p align="center">
-  <img src="docs/demo.gif" width="620" alt="Opening the Amnesia map, zooming into a project and deleting a session">
+  <img src="docs/session-library-demo.gif" width="900" alt="Opening a conversation from its session stamp, returning to the library, and adding it to a collection">
 </p>
+
+Amnesia reads local sessions from the Claude Code and Codex CLIs. Desktop app conversations aren’t supported.
+
+## See what takes up space
+
+Open **Storage** for a map of the sessions on your Mac. A tile’s area represents its disk usage, and the dots show how recently its sessions were used. Click a project tile to zoom in and see individual sessions. Choose **Browse sessions** to open the corresponding directory and source in **List**.
+
+Delete a session from its storage detail, or use the menu bar to select sessions by project or age. Deletion asks for confirmation. Coding agents can leave prompt history, file snapshots, and logs behind when a transcript is removed by hand; the details below explain what Amnesia cleans up.
 
 ## What deleting does
 
@@ -43,7 +41,7 @@ Desktop apps aren't supported yet.
 | Typed prompts in `history.jsonl` | Removed for good | Removed for good |
 | Project memory | Never touched | Not applicable |
 
-Transcripts stay on your Mac until you empty the Trash. Sessions that are running can't be selected, and each one is checked again just before it's deleted.
+Transcripts stay on your Mac until you empty the Trash. Running and recently modified sessions are protected, and each session is checked again just before it’s deleted.
 
 ## Leftovers
 
